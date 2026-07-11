@@ -1,0 +1,995 @@
+C<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eCMR · Validador de peticiones</title>
+  <style>
+    /* Docuten design system tokens (libs/design-system/theme.css — light theme) */
+    :root {
+      /* Primary (DCTN_THEME light palette) */
+      --d-primary-500: #2a6bf4;
+      --d-primary-600: #1956e5;
+      --d-primary-700: #1445c8;
+      /* Neutral scale (slate) */
+      --d-neutral-50: #f8fafc;
+      --d-neutral-100: #f1f5f9;
+      --d-neutral-200: #e2e8f0;
+      --d-neutral-300: #cbd5e1;
+      --d-neutral-400: #94a3b8;
+      --d-neutral-500: #64748b;
+      --d-neutral-600: #475569;
+      --d-neutral-700: #334155;
+      --d-neutral-900: #0f172a;
+      /* Semantic aliases */
+      --d-background: #f5f9ff;
+      --d-surface: #ffffff;
+      --d-on-surface: var(--d-neutral-900);
+      --d-on-surface-variant: var(--d-neutral-600);
+      --d-border: var(--d-neutral-300);
+      --d-border-variant: var(--d-neutral-200);
+      /* Severity (subtle) */
+      --d-success: #16a34a;
+      --d-success-subtle: #f0fdf4;
+      --d-on-success-subtle: #15803d;
+      --d-success-border: #bbf7d0;
+      --d-danger: #dc2626;
+      --d-danger-subtle: #fef2f2;
+      --d-on-danger-subtle: #b91c1c;
+      --d-danger-border: #fecaca;
+      --d-warn-subtle: #fefce8;
+      --d-on-warn-subtle: #854d0e;
+      --d-warn-border: #fef08a;
+      --d-info-subtle: #eff6ff;
+      --d-on-info-subtle: #1d4ed8;
+      --d-info-border: #bfdbfe;
+      /* Typography */
+      --d-font-sans: 'Inter', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --d-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      --d-text-xs: 0.75rem;
+      --d-text-sm: 0.8125rem;
+      --d-text-base: 0.875rem;
+      /* Radius */
+      --d-radius-lg: 0.375rem;
+      --d-radius-xl: 0.5rem;
+      --d-radius-2xl: 0.75rem;
+      /* Elevation */
+      --d-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: var(--d-font-sans);
+      background: var(--d-background);
+      color: var(--d-on-surface);
+      font-size: var(--d-text-base);
+      line-height: 1.5;
+      margin: 0;
+    }
+    /* Header — mismo header que la app de escritorio: bg-d-background + border-b */
+    .topbar {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .75rem 1.5rem;
+      background: var(--d-background);
+      border-bottom: 1px solid var(--d-border-variant);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .topbar img.logo { height: 22px; display: block; }
+    .topbar .app-name { font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; }
+    .topbar .sep { color: var(--d-neutral-300); }
+    .topbar .spacer { flex: 1; }
+    .wrap { margin: 0 auto; padding: 1.25rem 1.5rem 2rem; }
+    .card {
+      background: var(--d-surface);
+      border-radius: var(--d-radius-2xl);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: 1rem; font-weight: 600; letter-spacing: -0.01em;
+      color: var(--d-on-surface);
+      margin: -1.25rem -1.25rem 1.25rem;
+      padding: .75rem 1.25rem;
+      background: var(--d-info-subtle);
+      border-radius: var(--d-radius-2xl) var(--d-radius-2xl) 0 0;
+    }
+    .title-icon { width: 1.125rem; height: 1.125rem; flex: 0 0 auto; margin-left: auto; color: var(--d-neutral-500); }
+    .title-icon.blue { color: var(--d-primary-500); }
+    .title-icon.green { color: var(--d-success); }
+    label {
+      display: block; font-size: var(--d-text-sm); font-weight: 500;
+      color: var(--d-neutral-700); margin-bottom: .35rem;
+    }
+    textarea {
+      width: 100%; min-height: 320px; padding: .75rem .875rem;
+      background: var(--d-neutral-50);
+      border: 1px solid var(--d-border);
+      border-radius: var(--d-radius-xl);
+      color: var(--d-on-surface);
+      font-family: var(--d-font-mono); font-size: var(--d-text-sm);
+      resize: vertical;
+      transition: border-color 150ms, box-shadow 150ms;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--d-primary-500);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--d-primary-500) 18%, transparent);
+    }
+    textarea::placeholder { color: var(--d-neutral-400); }
+    .field { margin-bottom: 1rem; }
+    .field:last-child { margin-bottom: 0; }
+    .hint { font-size: var(--d-text-xs); color: var(--d-neutral-500); margin-top: .35rem; }
+    .badge {
+      display: inline-block; font-size: var(--d-text-xs); font-weight: 600;
+      padding: .125rem .5rem; border-radius: var(--d-radius-lg);
+      background: var(--d-info-subtle); color: var(--d-on-info-subtle);
+      border: 1px solid var(--d-info-border);
+      vertical-align: middle;
+    }
+    .badge.gray {
+      background: var(--d-neutral-100); color: var(--d-neutral-600);
+      border-color: var(--d-border-variant);
+    }
+    button {
+      background: var(--d-primary-500); color: #fff;
+      border: 1px solid var(--d-primary-500);
+      border-radius: var(--d-radius-lg);
+      padding: .5rem 1rem;
+      font-family: inherit; font-size: var(--d-text-base); font-weight: 600;
+      cursor: pointer;
+      transition: background 150ms, border-color 150ms;
+    }
+    button:hover:not(:disabled) { background: var(--d-primary-600); border-color: var(--d-primary-600); }
+    button:active:not(:disabled) { background: var(--d-primary-700); border-color: var(--d-primary-700); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-sm {
+      padding: .375rem .75rem; font-size: var(--d-text-sm); font-weight: 500;
+      background: var(--d-neutral-100); color: var(--d-neutral-700); border-color: var(--d-neutral-100);
+    }
+    .btn-sm:hover:not(:disabled) { background: var(--d-neutral-200); border-color: var(--d-neutral-200); }
+    /* Dropzone para cargar el fichero JSON, como las de la app de escritorio */
+    .dropzone {
+      display: flex; align-items: center; justify-content: center; gap: .5rem;
+      padding: .875rem .75rem;
+      border: 2px dashed var(--d-border);
+      border-radius: var(--d-radius-xl);
+      color: var(--d-neutral-500); font-size: var(--d-text-sm); text-align: center;
+      cursor: pointer; user-select: none;
+      transition: background 150ms, border-color 150ms, color 150ms;
+    }
+    .dropzone svg { width: 1.125rem; height: 1.125rem; flex: 0 0 auto; }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--d-primary-500); background: var(--d-info-subtle); color: var(--d-on-info-subtle);
+    }
+    .dropzone.has-file {
+      border-style: solid; border-color: var(--d-success-border);
+      background: var(--d-success-subtle); color: var(--d-on-success-subtle);
+    }
+    /* Zona de acciones: botones secundarios a la izquierda, validar a la derecha */
+    .actions { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; }
+    .actions .spacer { flex: 1; }
+    .actions button.validate { min-width: 220px; padding: .625rem 1.5rem; font-size: 1rem; }
+    /* Resultado */
+    .status { font-weight: 600; font-size: 1rem; }
+    .status.ok { color: var(--d-on-success-subtle); }
+    .status.err { color: var(--d-on-danger-subtle); }
+    .status.warn { color: var(--d-on-warn-subtle); }
+    .summary { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .625rem; }
+    .group-title {
+      font-size: var(--d-text-sm); font-weight: 600;
+      color: var(--d-neutral-600); margin: 1rem 0 .5rem;
+    }
+    .finding {
+      display: flex; gap: .7rem; align-items: baseline;
+      padding: .55rem .75rem; border-radius: var(--d-radius-xl);
+      margin-bottom: .45rem; font-size: var(--d-text-base);
+    }
+    .finding.error { background: var(--d-danger-subtle); border: 1px solid var(--d-danger-border); color: var(--d-on-danger-subtle); }
+    .finding.warning { background: var(--d-warn-subtle); border: 1px solid var(--d-warn-border); color: var(--d-on-warn-subtle); }
+    .finding .sev {
+      flex: 0 0 auto; font-size: 0.6875rem; font-weight: 700;
+      padding: .1rem .45rem; border-radius: 9999px;
+      text-transform: uppercase; letter-spacing: .04em;
+      background: var(--d-surface);
+    }
+    .finding.error .sev { color: var(--d-on-danger-subtle); border: 1px solid var(--d-danger-border); }
+    .finding.warning .sev { color: var(--d-on-warn-subtle); border: 1px solid var(--d-warn-border); }
+    .finding .body { min-width: 0; }
+    .finding .path {
+      display: block; font-family: var(--d-font-mono); font-size: var(--d-text-xs);
+      opacity: .75; word-break: break-all; margin-bottom: .1rem;
+    }
+    .allok {
+      display: flex; align-items: center; gap: .625rem;
+      padding: .75rem 1rem; margin-top: .75rem;
+      background: var(--d-success-subtle); border: 1px solid var(--d-success-border);
+      border-radius: var(--d-radius-xl); color: var(--d-on-success-subtle);
+      font-weight: 500;
+    }
+    .allok svg { width: 1.125rem; height: 1.125rem; flex: 0 0 auto; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <img class="logo" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODYiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxODYgMjgiIGZpbGw9Im5vbmUiPgogIDxwYXRoIGQ9Ik0wIDI3Ljk4MTFWMTguMjUxOUgzMC4wMTM5VjI3Ljk4MTFIMFpNMCAwSDguMzI2MzlDOC4zMjYzOCAxLjc3MTAxIDkuMDI5OTIgMy40Njk2MiAxMC4yODI1IDQuNzIyODNDMTEuNTM1MSA1Ljk3NjAzIDEzLjIzNDMgNi42ODEzNyAxNS4wMDcgNi42ODM5NUMxNi43Nzk3IDYuNjgxMzcgMTguNDc4OSA1Ljk3NjAzIDE5LjczMTQgNC43MjI4M0MyMC45ODQgMy40Njk2MiAyMS42ODc2IDEuNzcxMDEgMjEuNjg3NiAwTDMwLjAxMzkgMEMzMC4wMDYyIDMuOTc0ODMgMjguNDIzIDcuNzg0OCAyNS42MTA2IDEwLjU5NjNDMjIuNzk4MiAxMy40MDc5IDE4Ljk4NTYgMTQuOTkyMSAxNS4wMDcgMTUuMDAyNEMxMS4wMjg0IDE0Ljk5MjEgNy4yMTU3OCAxMy40MDc5IDQuNDAzMzcgMTAuNTk2M0MxLjU5MDk3IDcuNzg0OCAwLjAwNzcxMjE4IDMuOTc0ODMgMCAwWiIgZmlsbD0idXJsKCNwYWludDBfbGluZWFyXzEwNTFfNjY0KSI+PC9wYXRoPgogIDxwYXRoIGQ9Ik0xNy43NTY0IDAuMTc5MzUyVjAuMjM4MzAxQzE3Ljc0NjIgMC45NzY2MjQgMTcuNDQ3NCAxLjY4MDc0IDE2LjkyNTUgMi4xOTYzOEMxNi40MDM3IDIuNzEyMDIgMTUuNzAxMiAyLjk5NzE0IDE0Ljk3MjIgMi45ODkyNkMxNC4yNTQ5IDIuOTc5MSAxMy41Njk4IDIuNjg2MDEgMTMuMDYyNSAyLjE3MjI5QzEyLjU1NTMgMS42NTg1NyAxMi4yNjU5IDAuOTY0NzM5IDEyLjI1NTkgMC4yMzgzMDFWMC4xNzkzNTJIMTcuNzU2NFoiIGZpbGw9IiNGRUQyM0EiPjwvcGF0aD4KICA8cGF0aCBkPSJNMTQzLjE5MiAxNy43Nzc3QzE0My4xOTIgMTEuNTUyMiAxNDcuMTQxIDcuMzE4NzkgMTUzLjE1OSA3LjMxODc5QzE1OS4xNzYgNy4zMTg3OSAxNjMuMTI2IDExLjMxNTYgMTYzLjEyNiAxNy4zNDE5QzE2My4xMjUgMTguMDQ2IDE2My4wNzUgMTguNzQ5MSAxNjIuOTc2IDE5LjQ0NjFIMTQ4LjUxMkMxNDguODczIDIyLjI0NzYgMTUwLjM1NiAyNC4wMTU3IDE1My4yODMgMjQuMDE1N0MxNTQuMjI0IDI0LjAyMDYgMTU1LjE1NCAyMy44MSAxNTYgMjMuMzk5OUMxNTYuODQ3IDIyLjk4OTggMTU3LjU4OCAyMi4zOTExIDE1OC4xNjcgMjEuNjVMMTYyLjAxNyAyMy42MTcyQzE2MS4wNDMgMjUuMDE0MSAxNTkuNzM1IDI2LjE0NDkgMTU4LjIxMiAyNi45MDYyQzE1Ni42ODggMjcuNjY3NCAxNTQuOTk4IDI4LjAzNSAxNTMuMjk2IDI3Ljk3NTFDMTQ3LjI1MyAyNy45NzUxIDE0My4xOTIgMjMuOTE2MSAxNDMuMTkyIDE3Ljc3NzdaTTE0OC41MTIgMTYuMDM0NUgxNTcuNzkzQzE1Ny40MiAxMy4wMDg5IDE1NS44MjUgMTEuMjY1OCAxNTMuMTM0IDExLjI2NThDMTUwLjQ0MyAxMS4yNjU4IDE0OC45MSAxMy4wMDg5IDE0OC41MTIgMTYuMDM0NVpNMTMwLjI3MyAyMS42OTk4VjEuODUyNzdIMTM1LjI1NlY3LjY5MjMySDE0MS4xMzZWMTEuNzg4N0gxMzUuMjU2VjIwLjY0MTRDMTM1LjIxNyAyMS4wMjI5IDEzNS4yNiAyMS40MDgyIDEzNS4zOCAyMS43NzIyQzEzNS41MDEgMjIuMTM2MiAxMzUuNjk3IDIyLjQ3MDcgMTM1Ljk1NiAyMi43NTM5QzEzNi4yMTQgMjMuMDM3IDEzNi41MyAyMy4yNjI1IDEzNi44ODEgMjMuNDE1NkMxMzcuMjMzIDIzLjU2ODYgMTM3LjYxMyAyMy42NDU4IDEzNy45OTcgMjMuNjQyMUMxMzkuMTc3IDIzLjY1NzggMTQwLjM0OCAyMy40Mjg4IDE0MS40MzUgMjIuOTY5OFYyNy4wNDEzQzEzOS44MjYgMjcuNjc1NyAxMzguMTA3IDI3Ljk4ODcgMTM2LjM3NyAyNy45NjI3QzEzNS41NTMgMjguMDAwOSAxMzQuNzMgMjcuODY1MyAxMzMuOTYyIDI3LjU2NDdDMTMzLjE5MyAyNy4yNjQyIDEzMi40OTcgMjYuODA1NCAxMzEuOTE4IDI2LjIxODNDMTMxLjMzOCAyNS42MzExIDEzMC44ODkgMjQuOTI4NyAxMzAuNTk5IDI0LjE1NjZDMTMwLjMwOSAyMy4zODQ2IDEzMC4xODUgMjIuNTYwMiAxMzAuMjM1IDIxLjczNzFMMTMwLjI3MyAyMS42OTk4Wk0xMDYuNjAyIDIwLjE4MDdWNy42OTIzMkgxMTEuNTg1VjE5LjM5NjNDMTExLjYwNCAyMC40ODM1IDExMi4wMzQgMjEuNTIzMyAxMTIuNzg4IDIyLjMwNzFDMTEzLjU0MiAyMy4wOTA5IDExNC41NjUgMjMuNTYwNiAxMTUuNjUxIDIzLjYyMkMxMTYuNzM4IDIzLjY4MzUgMTE3LjgwNyAyMy4zMzIxIDExOC42NDUgMjIuNjM4NEMxMTkuNDgzIDIxLjk0NDcgMTIwLjAyNyAyMC45NiAxMjAuMTY5IDE5Ljg4MTlDMTIwLjE4MSAxOS43MjAzIDEyMC4xODEgMTkuNTU4IDEyMC4xNjkgMTkuMzk2M1Y3LjY5MjMySDEyNS4xNTJWMjcuNjE0SDEyMC4zMDZMMTIwLjIzMSAyNS4xMjM4QzExOS41IDI2LjA0MTkgMTE4LjU2MyAyNi43NzUgMTE3LjQ5NiAyNy4yNjM5QzExNi40MjkgMjcuNzUyOCAxMTUuMjYyIDI3Ljk4MzYgMTE0LjA4OSAyNy45Mzc4QzEwOS41OTIgMjcuOTM3OCAxMDYuNTI3IDI0LjgzNzQgMTA2LjUyNyAyMC4xNDM0TDEwNi42MDIgMjAuMTgwN1pNODUuODA4NCAxNy42MjgzQzg1LjgwODQgMTEuNDAyNyA5MC4xMDY2IDcuMzE4NzkgOTYuNTM1MSA3LjMxODc5Qzk5LjAwODcgNy4yODc1NiAxMDEuNDIgOC4wOTUxNiAxMDMuMzc1IDkuNjA5NzlMMTAwLjUzNCAxMy4wMDg5Qzk5LjQ0OTkgMTIuMDYzMSA5OC4wNDg2IDExLjU2MDcgOTYuNjA5OSAxMS42MDJDOTMuMjgzNSAxMS42MDIgOTEuMDI4NSAxNC4wMDUgOTEuMDI4NSAxNy42MjgzQzkxLjAyODUgMjEuMjUxNSA5My4yNDYxIDIzLjY1NDYgOTYuNjQ3MyAyMy42NTQ2Qzk3LjQ4MTkgMjMuNzAwMiA5OC4zMTY1IDIzLjU2NTkgOTkuMDk0NyAyMy4yNjA5Qzk5Ljg3MjggMjIuOTU1OCAxMDAuNTc2IDIyLjQ4NzEgMTAxLjE1NyAyMS44ODY1TDEwNC4wMSAyNS4yMTFDMTAyLjk5MyAyNi4xNTM4IDEwMS43OTkgMjYuODg0OSAxMDAuNDk2IDI3LjM2MTZDOTkuMTkzMyAyNy44MzgzIDk3LjgwODggMjguMDUxMSA5Ni40MjMgMjcuOTg3NkM5MC4wNjkyIDI3Ljk3NTEgODUuODA4NCAyMy44NDE0IDg1LjgwODQgMTcuNjI4M1pNNjIuMDI1MiAxNy42MjgzQzYyLjAyNTIgMTEuNDAyNyA2Ni4zMjM0IDcuMzE4NzkgNzIuNzE0NiA3LjMxODc5Qzc5LjEwNTggNy4zMTg3OSA4My4zNjY2IDExLjQ1MjUgODMuMzY2NiAxNy42MjgzQzgzLjM2NjYgMjMuODA0IDc5LjA2ODQgMjcuOTc1MSA3Mi43MTQ2IDI3Ljk3NTFDNjYuMzYwOCAyNy45NzUxIDYyLjAyNTIgMjMuODQxNCA2Mi4wMjUyIDE3LjYyODNaTTY3LjIzMjkgMTcuNjI4M0M2Ny4yMzI5IDIxLjI1MTUgNjkuNDI1NSAyMy42NTQ2IDcyLjcxNDYgMjMuNjU0NkM3Ni4wMDM2IDIzLjY1NDYgNzguMTQ2NSAyMS4yNTE1IDc4LjE0NjUgMTcuNjI4M0M3OC4xNDY1IDE0LjAwNSA3NS45NjYyIDExLjYwMiA3Mi43MTQ2IDExLjYwMkM2OS40NjI5IDExLjYwMiA2Ny4yMzI5IDE0LjAwNSA2Ny4yMzI5IDE3LjYyODNaTTE4MC45MTYgMjcuNTg5MVYxNS44ODUxQzE4MC45MTYgMTMuMzA3OCAxNzkuMDcyIDExLjYwMiAxNzYuMjU3IDExLjYwMkMxNzMuNDQxIDExLjYwMiAxNzEuNTk3IDEzLjMwNzggMTcxLjU5NyAxNS44ODUxVjI3LjYwMTZIMTY2LjYxNFY3LjY5MjMySDE3MS40NkwxNzEuNTM1IDEwLjE4MjVDMTcyLjMzMiA5LjI0MTMzIDE3My4zMzMgOC40OTMzOCAxNzQuNDYyIDcuOTk1MTRDMTc1LjU5IDcuNDk2OSAxNzYuODE4IDcuMjYxMzcgMTc4LjA1MSA3LjMwNjM0QzE4Mi44MSA3LjMwNjM0IDE4NS45OTkgMTAuNDA2NyAxODUuOTk5IDE1LjA2MzRWMjcuNjAxNkwxODAuOTE2IDI3LjU4OTFaTTM1LjE1MjMgMjcuNTg5MVYwLjE5Njc3N0g0NS45MTY1QzU0LjAxNDQgMC4xOTY3NzcgNTkuNDA5IDUuNjYyOCA1OS40MDkgMTMuODkzQzU5LjQwOSAyMi4xMjMxIDU0LjAxNDQgMjcuNTg5MSA0NS45MTY1IDI3LjU4OTFIMzUuMTUyM1pNNDAuMzcyNCAyMy4yNjg2SDQ1LjkxNjVDNTAuNzYyOCAyMy4yNjg2IDUzLjk3NzEgMTkuNTMzMyA1My45NzcxIDEzLjkxNzlDNTMuOTc3MSA4LjMwMjQyIDUwLjc2MjggNC41Nzk1NSA0NS45MTY1IDQuNTc5NTVINDAuMzEwMUw0MC4zNzI0IDIzLjI2ODZaIiBmaWxsPSJibGFjayI+PC9wYXRoPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDBfbGluZWFyXzEwNTFfNjY0IiB4MT0iMzAuMDEzOSIgeTE9IjEzLjk5MDYiIHgyPSIwIiB5Mj0iMTMuOTkwNiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgogICAgICA8c3RvcCBzdG9wLWNvbG9yPSIjNDFCQkZGIj48L3N0b3A+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzMxNzhGRSI+PC9zdG9wPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+Cjwvc3ZnPgo=" alt="Docuten" />
+    <span class="sep">·</span>
+    <span class="app-name">eCMR — Validador de peticiones</span>
+    <span class="badge">shipment / lot</span>
+    <span class="spacer"></span>
+  </header>
+
+  <div class="wrap">
+    <div class="card">
+      <h2>
+        Petición JSON
+        <svg class="title-icon blue" viewBox="0 0 384 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M64 0C28.7 0 0 28.7 0 64L0 448c0 35.3 28.7 64 64 64l256 0c35.3 0 64-28.7 64-64l0-288-128 0c-17.7 0-32-14.3-32-32L224 0 64 0zM256 0l0 128 128 0L256 0zM112 256l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64l160 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-160 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></svg>
+      </h2>
+      <div class="field">
+        <label for="json">Cuerpo de la petición</label>
+        <textarea id="json" spellcheck="false" placeholder='{ "shipment_reference": "SHP-0001", ... }'></textarea>
+      </div>
+      <div class="field">
+        <input type="file" id="file" accept="application/json,.json" style="display:none" />
+        <div class="dropzone" id="drop">
+          <svg viewBox="0 0 448 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M246.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-128 128c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 109.3 192 320c0 17.7 14.3 32 32 32s32-14.3 32-32l0-210.7 73.4 73.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-128-128zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64c0 53 43 96 96 96l256 0c53 0 96-43 96-96l0-64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64c0 17.7-14.3 32-32 32L96 448c-17.7 0-32-14.3-32-32l0-64z"/></svg>
+          <span id="dropText">Fichero JSON · pulsa o arrastra aquí (opcional)</span>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="format" class="btn-sm">Formatear</button>
+        <button type="button" id="clear" class="btn-sm">Limpiar</button>
+        <span class="spacer"></span>
+        <button id="validate" class="validate">Validar</button>
+      </div>
+    </div>
+
+    <div class="card" id="resultCard" style="display:none">
+      <h2>
+        Resultado
+        <svg class="title-icon green" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209L241 337c-9.4 9.4-24.6 9.4-33.9 0l-64-64c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l47 47L335 175c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9z"/></svg>
+      </h2>
+      <span class="status" id="status"></span>
+      <div class="summary" id="summary"></div>
+      <div id="findings" style="margin-top:.5rem"></div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // Reglas portadas de ShipmentValidator.java / LotValidator.java /
+    // CallbackUrlValidation.java (mismo comportamiento y mensajes equivalentes).
+    // ============================================================================
+    const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const E164_RE = /^\+[1-9]\d{1,14}$/;
+    const PDF_NAME_RE = /.+\.pdf$/i;
+    const MAX_COMBINED_CONTENT_SIZE = 31457280; // 30 MB
+    const MAX_DOCUMENT_NAME_LENGTH = 168;
+    const MAX_SIGNERS = 100;
+
+    const SIGNING_ROLES = ["signer", "approver", "cc"];
+    const CHANNELS = ["email", "sms", "whatsapp"];
+    const SIGNATURE_TYPES = ["automated", "biometric", "otp"];
+    const LANGUAGES = ["es", "en", "fr", "de", "nl", "it", "pt", "pt_br", "va", "ca"];
+    // Main document types by priority (highest first); the rest are attachments.
+    const MAIN_DOC_PRIORITY = ["transport_control_document", "ecmr", "consignment_note"];
+    const ATTACHMENT_DOC_TYPES = ["invoice", "contract", "delivery_note", "order", "adr_certificate", "other"];
+    const ALL_DOC_TYPES = MAIN_DOC_PRIORITY.concat(ATTACHMENT_DOC_TYPES, ["pod_doc"]);
+    const PARTY_GROUPS = [
+      ["consignors", "consignor"], ["drivers", "driver"], ["consignees", "consignee"],
+      ["carriers", "carrier"], ["others", "other"]
+    ];
+
+    const isBlank = (s) => s == null || String(s).trim() === "";
+
+    // --- Unknown-field detection: allowed properties per object (openapi.yaml) ---
+    const PARTY_BASE_FIELDS = [
+      "name", "tax_id", "signer_name", "signer_tax_id", "address", "post_code", "city", "country_code",
+      "order", "signing_role", "signature_type", "channel", "email", "mobile", "language", "redirect_url"
+    ];
+    const ALLOWED_FIELDS = {
+      lot: ["lot_reference", "lot_name", "callback_url", "shipments"],
+      shipment: ["shipment_reference", "shipment_name", "callback_url", "language", "origin", "destination",
+                 "parties", "documents", "goods", "comments", "metadata"],
+      address: ["address", "post_code", "city", "country_code"],
+      parties: ["consignors", "consignees", "drivers", "carriers", "others"],
+      consignor: PARTY_BASE_FIELDS,
+      carrier: PARTY_BASE_FIELDS,
+      driver: PARTY_BASE_FIELDS.concat(["license_plate"]),
+      consignee: PARTY_BASE_FIELDS.concat(["signature_collected_by_driver", "delivery_without_signature_allowed"]),
+      other: PARTY_BASE_FIELDS.concat(["role"]),
+      document: ["document_type", "document_name", "external_id", "content", "template", "signable", "signers"],
+      template: ["code", "values"],
+      signer: ["order", "coordinate"],
+      coordinate: ["sig_page", "top_left_corner_x", "top_left_corner_y", "width", "height"],
+      good: ["good_description", "cargo_type", "good_gross_mass", "good_size", "temperature",
+             "dangerous_goods", "dangerous_goods_description"],
+      metadata: ["name", "value"]
+    };
+
+    function levenshtein(a, b) {
+      const m = a.length, n = b.length;
+      const row = Array.from({ length: n + 1 }, (_, j) => j);
+      for (let i = 1; i <= m; i++) {
+        let prev = row[0];
+        row[0] = i;
+        for (let j = 1; j <= n; j++) {
+          const tmp = row[j];
+          row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+          prev = tmp;
+        }
+      }
+      return row[n];
+    }
+
+    // Nearest allowed field, only when close enough to look like a typo.
+    function closestField(key, allowed) {
+      let best = null, bestDist = Infinity;
+      for (const candidate of allowed) {
+        const dist = levenshtein(key.toLowerCase(), candidate.toLowerCase());
+        if (dist < bestDist) { bestDist = dist; best = candidate; }
+      }
+      return bestDist <= Math.max(2, Math.floor(key.length / 4)) ? best : null;
+    }
+
+    function checkUnknownFields(obj, schema, path, f) {
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) { return; }
+      const allowed = ALLOWED_FIELDS[schema];
+      for (const key of Object.keys(obj)) {
+        if (!allowed.includes(key)) {
+          const near = closestField(key, allowed);
+          f.error(`${path}.${key}`,
+            `El campo '${key}' no existe en el esquema` + (near ? ` (¿querías decir '${near}'?)` : "")
+            + ". El backend lo ignoraría silenciosamente.");
+        }
+      }
+    }
+
+    function findingList() {
+      const items = [];
+      return {
+        items,
+        error: (path, message) => items.push({ severity: "error", path, message }),
+        warning: (path, message) => items.push({ severity: "warning", path, message })
+      };
+    }
+
+    // Flattens parties keeping type, index within its list and a path for messages.
+    function collectParties(parties, base) {
+      const out = [];
+      if (!parties || typeof parties !== "object") { return out; }
+      for (const [key, type] of PARTY_GROUPS) {
+        const list = Array.isArray(parties[key]) ? parties[key] : [];
+        list.forEach((p, i) => {
+          if (p && typeof p === "object") {
+            out.push({ party: p, type, path: `${base}.parties.${key}[${i}]`, label: `${type}[${i}]` });
+          }
+        });
+      }
+      return out;
+    }
+
+    // FlowType.detect(): SIMPLIFIED (1 signer, consignor) /
+    // SIMPLIFIED_WITH_DRIVER_SIGNATURE (2 signers: consignor + driver) / COMPLETE.
+    function detectFlowType(all) {
+      const signers = all.filter((e) => e.party.signing_role === "signer");
+      if (signers.length === 1 && signers[0].type === "consignor") { return "SIMPLIFIED"; }
+      if (signers.length === 2
+          && signers.some((e) => e.type === "consignor")
+          && signers.some((e) => e.type === "driver")) { return "SIMPLIFIED_WITH_DRIVER_SIGNATURE"; }
+      return "COMPLETE";
+    }
+
+    function base64DecodedSize(content) {
+      const clean = content.replace(/\s+/g, "");
+      const padding = (clean.match(/=+$/) || [""])[0].length;
+      return Math.floor(clean.length / 4) * 3 - padding;
+    }
+
+    function isValidBase64(content) {
+      const clean = content.replace(/\s+/g, "");
+      if (clean === "") { return false; }
+      return /^[A-Za-z0-9+/]+={0,2}$/.test(clean);
+    }
+
+    function validateCallbackUrl(url, path, f) {
+      if (isBlank(url)) { return; }
+      const trimmed = String(url).trim();
+      if (trimmed.length > 1024) { f.error(path, "callback_url supera los 1024 caracteres."); }
+      let parsed;
+      try { parsed = new URL(trimmed); } catch { f.error(path, "callback_url no es una URL válida."); return; }
+      if (!/^https?:$/i.test(parsed.protocol)) { f.error(path, "callback_url debe usar esquema http o https."); }
+      if (isBlank(parsed.hostname)) { f.error(path, "callback_url debe tener un host válido."); }
+    }
+
+    // ------------------------------- Parties -----------------------------------
+    function validateParties(shipment, base, f) {
+      const all = collectParties(shipment.parties, base);
+
+      if (!shipment.parties || typeof shipment.parties !== "object") {
+        f.error(`${base}.parties`, "El shipment debe incluir el objeto parties.");
+        return { all, flowType: null };
+      }
+      checkUnknownFields(shipment.parties, "parties", `${base}.parties`, f);
+      all.forEach((e) => checkUnknownFields(e.party, e.type, e.path, f));
+      if (!all.some((e) => e.type === "consignor")) {
+        f.error(`${base}.parties.consignors`, "El shipment debe tener al menos un consignor.");
+      }
+      if (!all.some((e) => e.type === "driver")) {
+        f.error(`${base}.parties.drivers`, "El shipment debe tener al menos un driver.");
+      }
+      const consignees = all.filter((e) => e.type === "consignee");
+      if (consignees.length > 1) {
+        f.error(`${base}.parties.consignees`, `Solo se permite 1 consignee por shipment (hay ${consignees.length}).`);
+      }
+
+      const flowType = detectFlowType(all);
+
+      // Per-party field rules
+      const seenOrders = new Map();
+      for (const e of all) {
+        const p = e.party;
+        const role = p.signing_role;
+
+        if (role != null && !SIGNING_ROLES.includes(role)) {
+          f.error(`${e.path}.signing_role`, `signing_role '${role}' no es válido (${SIGNING_ROLES.join(", ")}).`);
+        }
+        if (p.channel != null && !CHANNELS.includes(p.channel)) {
+          f.error(`${e.path}.channel`, `channel '${p.channel}' no es válido (${CHANNELS.join(", ")}).`);
+        }
+        if (p.signature_type != null && !SIGNATURE_TYPES.includes(p.signature_type)) {
+          f.error(`${e.path}.signature_type`, `signature_type '${p.signature_type}' no es válido (${SIGNATURE_TYPES.join(", ")}).`);
+        }
+        if (p.language != null && !LANGUAGES.includes(p.language)) {
+          f.warning(`${e.path}.language`, `language '${p.language}' no está entre los soportados (${LANGUAGES.join(", ")}).`);
+        }
+
+        // Order rules
+        if (role != null && p.order == null) {
+          f.error(`${e.path}.order`, "order es obligatorio cuando signing_role está establecido.");
+        }
+        if (p.order != null) {
+          if (!Number.isInteger(p.order) || p.order < 1) {
+            f.error(`${e.path}.order`, "order debe ser un entero >= 1.");
+          } else if (seenOrders.has(p.order)) {
+            f.error(`${e.path}.order`, `order ${p.order} duplicado (ya usado por ${seenOrders.get(p.order)}).`);
+          } else {
+            seenOrders.set(p.order, e.label);
+          }
+        }
+
+        // Requirements when signing_role is set
+        if (role != null) {
+          if (isBlank(p.name)) { f.error(`${e.path}.name`, "name es obligatorio cuando signing_role está establecido."); }
+          if (isBlank(p.email) && isBlank(p.mobile)) {
+            f.error(e.path, "email o mobile es obligatorio cuando signing_role está establecido.");
+          }
+          if (role === "signer" && isBlank(p.signature_type)) {
+            f.error(`${e.path}.signature_type`, "signature_type es obligatorio cuando signing_role es 'signer'.");
+          }
+          if (isBlank(p.channel)) {
+            f.error(`${e.path}.channel`, "channel es obligatorio cuando signing_role está establecido.");
+          }
+        }
+
+        // Channel restrictions by role
+        if (role === "approver" && p.channel != null && p.channel !== "email") {
+          f.error(`${e.path}.channel`, "channel debe ser 'email' cuando signing_role es 'approver'.");
+        }
+        if (role === "cc" && p.channel != null) {
+          if (flowType === "SIMPLIFIED" && e.type === "driver") {
+            if (!["email", "sms"].includes(p.channel)) {
+              f.error(`${e.path}.channel`, "En flujo simplificado, el driver 'cc' solo admite channel 'email' o 'sms'.");
+            }
+          } else if (p.channel !== "email") {
+            f.error(`${e.path}.channel`, "channel debe ser 'email' cuando signing_role es 'cc'.");
+          }
+        }
+
+        // Contact required by channel
+        if (p.channel === "email" && isBlank(p.email)) {
+          f.error(`${e.path}.email`, "email es obligatorio cuando channel es 'email'.");
+        }
+        if ((p.channel === "sms" || p.channel === "whatsapp") && isBlank(p.mobile)) {
+          f.error(`${e.path}.mobile`, `mobile es obligatorio cuando channel es '${p.channel}'.`);
+        }
+
+        // Formats
+        if (!isBlank(p.email) && !EMAIL_RE.test(String(p.email).trim())) {
+          f.error(`${e.path}.email`, `El email '${p.email}' no tiene un formato válido.`);
+        }
+        if (!isBlank(p.mobile) && !E164_RE.test(String(p.mobile).trim())) {
+          f.error(`${e.path}.mobile`, `El mobile '${p.mobile}' no cumple el formato E.164 (+prefijo y hasta 15 dígitos, sin espacios ni guiones, p. ej. +34600000000).`);
+        }
+      }
+
+      // Signer count limit
+      const signerCount = all.filter((e) => e.party.signing_role === "signer").length;
+      if (signerCount > MAX_SIGNERS) {
+        f.error(`${base}.parties`, `El número total de signers (${signerCount}) supera el máximo permitido (${MAX_SIGNERS}).`);
+      }
+
+      validateFlowRules(all, flowType, base, f);
+      validateSignOrderFlow(all, flowType, base, f);
+      validateConsigneeRules(all, base, f);
+
+      return { all, flowType };
+    }
+
+    function validateFlowRules(all, flowType, base, f) {
+      const byType = (t) => all.filter((e) => e.type === t);
+      if (flowType === "SIMPLIFIED") {
+        byType("driver").forEach((e) => {
+          if (e.party.signing_role != null && e.party.signing_role !== "cc") {
+            f.error(`${e.path}.signing_role`, "En flujo simplificado, los drivers deben tener signing_role 'cc'.");
+          }
+        });
+        [...byType("consignee"), ...byType("other")].forEach((e) => {
+          if (e.party.signing_role != null && e.party.signing_role !== "cc") {
+            f.error(`${e.path}.signing_role`, `En flujo simplificado, los ${e.type}s deben tener signing_role 'cc'.`);
+          }
+        });
+      } else if (flowType === "SIMPLIFIED_WITH_DRIVER_SIGNATURE") {
+        const drivers = byType("driver");
+        if (drivers.length !== 1) {
+          f.error(`${base}.parties.drivers`, "En flujo simplificado con firma del driver se requiere exactamente un driver.");
+        }
+        [...byType("consignee"), ...byType("other")].forEach((e) => {
+          if (e.party.signing_role != null && e.party.signing_role !== "cc") {
+            f.error(`${e.path}.signing_role`, `En flujo simplificado con firma del driver, los ${e.type}s deben tener signing_role 'cc'.`);
+          }
+        });
+      } else { // COMPLETE
+        if (byType("consignor").length && !byType("consignor").some((e) => e.party.signing_role === "signer")) {
+          f.error(`${base}.parties.consignors`, "Al menos un consignor debe tener signing_role 'signer'.");
+        }
+        if (byType("driver").length && !byType("driver").some((e) => e.party.signing_role === "signer")) {
+          f.error(`${base}.parties.drivers`, "Al menos un driver debe tener signing_role 'signer'.");
+        }
+        const consignees = byType("consignee");
+        if (consignees.length && !consignees.some((e) => e.party.signing_role === "signer")) {
+          f.error(`${base}.parties.consignees`, "Al menos un consignee debe tener signing_role 'signer'.");
+        }
+      }
+    }
+
+    // Sequential sign-order flow (COMPLETE only): consignors < drivers < consignees.
+    function validateSignOrderFlow(all, flowType, base, f) {
+      if (flowType !== "COMPLETE") { return; }
+      const orders = (t) => all
+        .filter((e) => e.type === t && e.party.signing_role != null && e.party.order != null)
+        .map((e) => e.party.order);
+      const consignors = orders("consignor"), drivers = orders("driver"), consignees = orders("consignee");
+      if (consignors.length && drivers.length && Math.max(...consignors) >= Math.min(...drivers)) {
+        f.error(`${base}.parties`, "Todos los order de los consignors deben ser menores que los de los drivers.");
+      }
+      if (drivers.length && consignees.length && Math.max(...drivers) >= Math.min(...consignees)) {
+        f.error(`${base}.parties`, "Todos los order de los drivers deben ser menores que los de los consignees.");
+      }
+    }
+
+    // Consignee-specific rules: signature_collected_by_driver / delivery_without_signature_allowed.
+    function validateConsigneeRules(all, base, f) {
+      const drivers = all.filter((e) => e.type === "driver" && e.party.signing_role != null && e.party.order != null);
+      const lastDriver = drivers.length
+        ? drivers.reduce((a, b) => (b.party.order > a.party.order ? b : a)).party
+        : null;
+
+      all.filter((e) => e.type === "consignee").forEach((e) => {
+        const p = e.party;
+        if (p.signature_collected_by_driver === true) {
+          if (isBlank(p.channel)) {
+            f.error(`${e.path}.channel`, "channel es obligatorio cuando signature_collected_by_driver es true.");
+          } else if (lastDriver) {
+            if (p.channel !== lastDriver.channel) {
+              f.error(`${e.path}.channel`, `channel ('${p.channel}') debe coincidir con el del driver ('${lastDriver.channel}') cuando signature_collected_by_driver es true.`);
+            }
+            if ((p.email ?? null) !== (lastDriver.email ?? null)) {
+              f.error(`${e.path}.email`, "email debe coincidir con el del driver cuando signature_collected_by_driver es true.");
+            }
+            if ((p.mobile ?? null) !== (lastDriver.mobile ?? null)) {
+              f.error(`${e.path}.mobile`, "mobile debe coincidir con el del driver cuando signature_collected_by_driver es true.");
+            }
+          }
+        }
+        if (p.delivery_without_signature_allowed === true && p.signature_collected_by_driver !== true) {
+          f.error(`${e.path}.delivery_without_signature_allowed`, "delivery_without_signature_allowed requiere signature_collected_by_driver = true.");
+        }
+      });
+    }
+
+    // ------------------------------ Documents ----------------------------------
+    function validateDocuments(shipment, all, base, f) {
+      const docs = Array.isArray(shipment.documents) ? shipment.documents : [];
+      if (!docs.length) {
+        f.error(`${base}.documents`, "El shipment debe incluir al menos un documento.");
+        return { mainDoc: null };
+      }
+
+      // Types
+      docs.forEach((d, i) => {
+        if (d.document_type === "pod_doc") {
+          f.error(`${base}.documents[${i}].document_type`, "El tipo 'pod_doc' no está permitido en la creación (lo genera internamente el sistema).");
+        } else if (d.document_type != null && !ALL_DOC_TYPES.includes(d.document_type)) {
+          f.error(`${base}.documents[${i}].document_type`, `document_type '${d.document_type}' no es válido (${MAIN_DOC_PRIORITY.concat(ATTACHMENT_DOC_TYPES).join(", ")}).`);
+        }
+      });
+
+      const mains = docs.filter((d) => MAIN_DOC_PRIORITY.includes(d.document_type));
+      if (!mains.length) {
+        f.error(`${base}.documents`, `El shipment debe contener al menos un documento principal: ${MAIN_DOC_PRIORITY.join(", ")}.`);
+      }
+      for (const type of MAIN_DOC_PRIORITY) {
+        const count = docs.filter((d) => d.document_type === type).length;
+        if (count > 1) {
+          f.error(`${base}.documents`, `Hay ${count} documentos de tipo '${type}'; solo se permite uno.`);
+        }
+      }
+      // Effective main document: highest-priority main type present.
+      let mainDoc = null;
+      for (const type of MAIN_DOC_PRIORITY) {
+        mainDoc = docs.find((d) => d.document_type === type);
+        if (mainDoc) { break; }
+      }
+
+      // Duplicate attachment names
+      const attachmentNames = docs.filter((d) => d !== mainDoc && !isBlank(d.document_name)).map((d) => String(d.document_name));
+      const dupNames = attachmentNames.filter((n, i) => attachmentNames.indexOf(n) !== i);
+      if (dupNames.length) {
+        f.error(`${base}.documents`, `Nombres de adjuntos duplicados: ${[...new Set(dupNames)].join(", ")}.`);
+      }
+
+      // Per-document rules
+      let combinedSize = 0;
+      const participatingOrders = all
+        .filter((e) => e.party.signing_role != null && e.party.order != null)
+        .map((e) => e.party.order);
+      const signerOrders = new Set(all
+        .filter((e) => e.party.signing_role === "signer" && e.party.order != null)
+        .map((e) => e.party.order));
+
+      docs.forEach((d, i) => {
+        const path = `${base}.documents[${i}]`;
+        const name = d.document_name ?? `documents[${i}]`;
+
+        checkUnknownFields(d, "document", path, f);
+
+        if (isBlank(d.document_name)) {
+          f.error(`${path}.document_name`, "document_name es obligatorio.");
+        } else {
+          if (String(d.document_name).length > MAX_DOCUMENT_NAME_LENGTH) {
+            f.error(`${path}.document_name`, `El nombre '${name}' supera los ${MAX_DOCUMENT_NAME_LENGTH} caracteres.`);
+          }
+          if (!PDF_NAME_RE.test(String(d.document_name))) {
+            f.error(`${path}.document_name`, `El nombre '${name}' debe incluir nombre de fichero y extensión .pdf.`);
+          }
+        }
+
+        // content XOR template
+        const hasContent = !isBlank(d.content);
+        const hasTemplate = d.template != null && typeof d.template === "object";
+        if (!hasContent && !hasTemplate) {
+          f.error(path, `El documento '${name}' debe tener content o template.`);
+        } else if (hasContent && hasTemplate) {
+          f.error(path, `El documento '${name}' no puede tener content y template a la vez.`);
+        }
+        if (hasContent) {
+          if (!isValidBase64(String(d.content))) {
+            f.error(`${path}.content`, `El content del documento '${name}' no es Base64 válido.`);
+          } else {
+            combinedSize += base64DecodedSize(String(d.content));
+          }
+        }
+        if (hasTemplate) {
+          checkUnknownFields(d.template, "template", `${path}.template`, f);
+          if (isBlank(d.template.code)) {
+            f.error(`${path}.template.code`, `El template del documento '${name}' debe indicar code.`);
+          }
+        }
+
+        // Unknown fields on signers/coordinates, regardless of signable
+        (Array.isArray(d.signers) ? d.signers : []).forEach((s, j) => {
+          if (!s || typeof s !== "object") { return; }
+          checkUnknownFields(s, "signer", `${path}.signers[${j}]`, f);
+          if (s.coordinate != null && typeof s.coordinate === "object") {
+            checkUnknownFields(s.coordinate, "coordinate", `${path}.signers[${j}].coordinate`, f);
+          }
+        });
+
+        // Signers / main-document visibility
+        if (d.signable === true) {
+          const signers = Array.isArray(d.signers) ? d.signers : [];
+          const refOrders = signers.map((s) => s && s.order).filter((o) => o != null);
+
+          signers.forEach((s, j) => {
+            if (!s || s.order == null) {
+              f.error(`${path}.signers[${j}].order`, "Cada signer del documento debe indicar order.");
+            } else if (!participatingOrders.includes(s.order)) {
+              f.error(`${path}.signers[${j}].order`, `El order ${s.order} no corresponde a ningún party participante (con signing_role).`);
+            }
+          });
+
+          if (d === mainDoc) {
+            const missing = participatingOrders.filter((o) => !refOrders.includes(o));
+            if (missing.length) {
+              f.error(`${path}.signers`, `El documento principal '${name}' debe listar a todos los parties participantes; faltan los order: ${missing.join(", ")}. (Todos los intervinientes deben ver el documento principal.)`);
+            }
+          } else {
+            if (!signers.length) {
+              f.error(`${path}.signers`, `El adjunto firmable '${name}' debe contener al menos un signer.`);
+            } else if (!refOrders.some((o) => signerOrders.has(o))) {
+              f.error(`${path}.signers`, `El adjunto '${name}' es firmable pero solo referencia parties cc/approver; debe incluir al menos un party con signing_role 'signer'.`);
+            }
+          }
+        } else if (d.signable == null) {
+          f.error(`${path}.signable`, "signable es obligatorio.");
+        }
+      });
+
+      if (combinedSize > MAX_COMBINED_CONTENT_SIZE) {
+        f.error(`${base}.documents`, `El tamaño combinado de los content (${(combinedSize / 1048576).toFixed(1)} MB) supera el máximo de 30 MB.`);
+      }
+
+      validateCoordinates(docs, all, base, f);
+      return { mainDoc };
+    }
+
+    // Coordinates: cc/approver must not have them; signers are all-or-nothing
+    // across all signable documents; a present coordinate must be complete.
+    function validateCoordinates(docs, all, base, f) {
+      const COORD_FIELDS = ["sig_page", "top_left_corner_x", "top_left_corner_y", "width", "height"];
+      let withCoord = 0, withoutCoord = 0;
+
+      docs.forEach((d, i) => {
+        if (d.signable !== true || !Array.isArray(d.signers)) { return; }
+        d.signers.forEach((s, j) => {
+          if (!s || s.order == null) { return; }
+          const entry = all.find((e) => e.party.order === s.order && e.party.signing_role != null);
+          if (!entry) { return; }
+          const role = entry.party.signing_role;
+          const hasCoord = s.coordinate != null && typeof s.coordinate === "object";
+          const path = `${base}.documents[${i}].signers[${j}]`;
+
+          if (hasCoord && (role === "cc" || role === "approver")) {
+            f.error(`${path}.coordinate`, `El party con order ${s.order} tiene signing_role '${role}' y no debe llevar coordinate (no firma).`);
+          }
+          if (hasCoord) {
+            const missing = COORD_FIELDS.filter((k) => s.coordinate[k] == null);
+            if (missing.length) {
+              f.error(`${path}.coordinate`, `coordinate incompleto; faltan: ${missing.join(", ")}.`);
+            }
+          }
+          if (role === "signer") { hasCoord ? withCoord++ : withoutCoord++; }
+        });
+      });
+
+      if (withCoord > 0 && withoutCoord > 0) {
+        f.error(`${base}.documents`, "Coordenadas inconsistentes: o todos los signers llevan coordinate en todos los documentos firmables, o ninguno.");
+      }
+    }
+
+    // -------------------------------- Goods ------------------------------------
+    function validateGoods(shipment, base, f) {
+      const goods = Array.isArray(shipment.goods) ? shipment.goods : [];
+      goods.forEach((g, i) => {
+        if (!g || typeof g !== "object") { return; }
+        checkUnknownFields(g, "good", `${base}.goods[${i}]`, f);
+        if (isBlank(g.good_description)) {
+          f.error(`${base}.goods[${i}].good_description`, "good_description es obligatorio.");
+        }
+        if (g.dangerous_goods == null) {
+          f.error(`${base}.goods[${i}].dangerous_goods`, "dangerous_goods es obligatorio.");
+        }
+        if (g.dangerous_goods === true && isBlank(g.dangerous_goods_description)) {
+          f.error(`${base}.goods[${i}].dangerous_goods_description`, "dangerous_goods_description es obligatorio cuando dangerous_goods es true.");
+        }
+      });
+    }
+
+    // ------------------------------- Shipment ----------------------------------
+    function validateShipment(shipment, base, f) {
+      if (!shipment || typeof shipment !== "object" || Array.isArray(shipment)) {
+        f.error(base, "El shipment debe ser un objeto JSON.");
+        return { flowType: null, structure: null };
+      }
+      checkUnknownFields(shipment, "shipment", base, f);
+      checkUnknownFields(shipment.origin, "address", `${base}.origin`, f);
+      checkUnknownFields(shipment.destination, "address", `${base}.destination`, f);
+      (Array.isArray(shipment.metadata) ? shipment.metadata : []).forEach((m, i) => {
+        checkUnknownFields(m, "metadata", `${base}.metadata[${i}]`, f);
+      });
+      if (isBlank(shipment.shipment_reference)) { f.error(`${base}.shipment_reference`, "shipment_reference es obligatorio."); }
+      if (isBlank(shipment.shipment_name)) { f.error(`${base}.shipment_name`, "shipment_name es obligatorio."); }
+      if (shipment.language != null && !LANGUAGES.includes(shipment.language)) {
+        f.warning(`${base}.language`, `language '${shipment.language}' no está entre los soportados (${LANGUAGES.join(", ")}).`);
+      }
+      validateCallbackUrl(shipment.callback_url, `${base}.callback_url`, f);
+
+      const { all, flowType } = validateParties(shipment, base, f);
+      validateDocuments(shipment, all, base, f);
+      validateGoods(shipment, base, f);
+
+      // Party structure (order -> type of every signer) for lot consistency checks.
+      const structure = all
+        .filter((e) => e.party.signing_role === "signer" && e.party.order != null)
+        .map((e) => `${e.party.order}:${e.type}`)
+        .sort()
+        .join("|");
+      return { flowType, structure };
+    }
+
+    // --------------------------------- Lot -------------------------------------
+    function validateLot(lot, f) {
+      checkUnknownFields(lot, "lot", "$", f);
+      if (isBlank(lot.lot_reference)) { f.error("$.lot_reference", "lot_reference es obligatorio."); }
+      if (isBlank(lot.lot_name)) { f.error("$.lot_name", "lot_name es obligatorio."); }
+      validateCallbackUrl(lot.callback_url, "$.callback_url", f);
+
+      const shipments = Array.isArray(lot.shipments) ? lot.shipments : [];
+      if (!shipments.length) {
+        f.error("$.shipments", "El lot debe contener al menos un shipment.");
+        return { flowTypes: [] };
+      }
+
+      const results = shipments.map((s, i) => validateShipment(s, `$.shipments[${i}]`, f));
+
+      if (shipments.length > 1) {
+        const ref = results[0];
+        results.slice(1).forEach((r, i) => {
+          if (ref.structure != null && r.structure != null && r.structure !== ref.structure) {
+            f.error(`$.shipments[${i + 1}].parties`, `El shipment ${i + 2} tiene una estructura de parties (order → party_type de los signers) distinta a la del shipment 1.`);
+          }
+          if (ref.flowType && r.flowType && r.flowType !== ref.flowType) {
+            f.error(`$.shipments[${i + 1}]`, `El lot no puede mezclar flujos distintos: shipment 1 es ${ref.flowType} y shipment ${i + 2} es ${r.flowType}.`);
+          }
+        });
+      }
+      return { flowTypes: results.map((r) => r.flowType) };
+    }
+
+    // Entry point: returns { kind, findings, badges }. The request kind is inferred
+    // from the payload: any lot-only trait at the root (shipments[], lot_reference,
+    // lot_name) means POST /lots; otherwise POST /shipments.
+    function validateRequest(root) {
+      const f = findingList();
+      const kind = (Array.isArray(root.shipments) || root.lot_reference != null || root.lot_name != null)
+        ? "lot" : "shipment";
+      const badges = [{ text: kind === "lot" ? "Lot (POST /lots)" : "Shipment (POST /shipments)", cls: "gray" }];
+
+      if (kind === "lot") {
+        const { flowTypes } = validateLot(root, f);
+        const unique = [...new Set(flowTypes.filter(Boolean))];
+        badges.push({ text: `${(root.shipments || []).length || 0} shipment(s)`, cls: "gray" });
+        if (unique.length) { badges.push({ text: `Flujo: ${unique.join(" / ")}`, cls: "gray" }); }
+      } else {
+        const { flowType } = validateShipment(root, "$", f);
+        if (flowType) { badges.push({ text: `Flujo: ${flowType}`, cls: "gray" }); }
+      }
+      return { kind, findings: f.items, badges };
+    }
+
+    // =============================== UI wiring ==================================
+    const $ = (id) => document.getElementById(id);
+
+    // --- JSON file dropzone (click or drag & drop) ---
+    function loadFile(file) {
+      if (!file) { return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        $("json").value = String(reader.result);
+        $("drop").classList.add("has-file");
+        $("dropText").textContent = file.name + " (" + Math.round(file.size / 1024) + " KB)";
+      };
+      reader.readAsText(file);
+    }
+    $("drop").addEventListener("click", () => $("file").click());
+    $("file").addEventListener("change", (e) => loadFile(e.target.files[0]));
+    $("drop").addEventListener("dragover", (e) => { e.preventDefault(); $("drop").classList.add("dragover"); });
+    $("drop").addEventListener("dragleave", () => $("drop").classList.remove("dragover"));
+    $("drop").addEventListener("drop", (e) => {
+      e.preventDefault();
+      $("drop").classList.remove("dragover");
+      loadFile(e.dataTransfer.files[0]);
+    });
+
+    $("format").addEventListener("click", () => {
+      try { $("json").value = JSON.stringify(JSON.parse($("json").value), null, 2); }
+      catch { /* leave as-is; validation will report the parse error */ }
+    });
+
+    $("clear").addEventListener("click", () => {
+      $("json").value = "";
+      $("file").value = "";
+      $("drop").classList.remove("has-file");
+      $("dropText").textContent = "Fichero JSON · pulsa o arrastra aquí (opcional)";
+      $("resultCard").style.display = "none";
+    });
+
+    $("validate").addEventListener("click", () => {
+      const raw = $("json").value.trim();
+      $("resultCard").style.display = "block";
+
+      if (!raw) { return renderParseError("Pega o carga una petición JSON."); }
+      let root;
+      try { root = JSON.parse(raw); }
+      catch (err) { return renderParseError("El JSON no es válido: " + err.message); }
+      if (!root || typeof root !== "object" || Array.isArray(root)) {
+        return renderParseError("La raíz de la petición debe ser un objeto JSON.");
+      }
+
+      render(validateRequest(root));
+      $("resultCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+
+    function renderParseError(message) {
+      const s = $("status");
+      s.className = "status err";
+      s.textContent = "✗ " + message;
+      $("summary").innerHTML = "";
+      $("findings").innerHTML = "";
+    }
+
+    function render({ findings, badges }) {
+      const errors = findings.filter((x) => x.severity === "error");
+      const warnings = findings.filter((x) => x.severity === "warning");
+
+      const s = $("status");
+      if (errors.length) {
+        s.className = "status err";
+        s.textContent = `✗ Petición inválida: ${errors.length} error(es)` + (warnings.length ? ` y ${warnings.length} aviso(s)` : "");
+      } else if (warnings.length) {
+        s.className = "status warn";
+        s.textContent = `⚠ Petición válida con ${warnings.length} aviso(s)`;
+      } else {
+        s.className = "status ok";
+        s.textContent = "✓ Petición válida";
+      }
+
+      $("summary").innerHTML = "";
+      badges.forEach((b) => {
+        const span = document.createElement("span");
+        span.className = "badge " + (b.cls || "");
+        span.textContent = b.text;
+        $("summary").appendChild(span);
+      });
+
+      const box = $("findings");
+      box.innerHTML = "";
+
+      if (!errors.length && !warnings.length) {
+        const ok = document.createElement("div");
+        ok.className = "allok";
+        ok.innerHTML = '<svg viewBox="0 0 512 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209L241 337c-9.4 9.4-24.6 9.4-33.9 0l-64-64c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l47 47L335 175c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9z"/></svg><span>No se han detectado incumplimientos de las reglas de negocio.</span>';
+        box.appendChild(ok);
+        return;
+      }
+
+      const renderGroup = (title, items) => {
+        if (!items.length) { return; }
+        const h = document.createElement("div");
+        h.className = "group-title";
+        h.textContent = `${title} (${items.length})`;
+        box.appendChild(h);
+        items.forEach((x) => {
+          const div = document.createElement("div");
+          div.className = "finding " + x.severity;
+          const sev = document.createElement("span");
+          sev.className = "sev";
+          sev.textContent = x.severity === "error" ? "error" : "aviso";
+          const body = document.createElement("div");
+          body.className = "body";
+          const path = document.createElement("span");
+          path.className = "path";
+          path.textContent = x.path;
+          const msg = document.createElement("span");
+          msg.textContent = x.message;
+          body.append(path, msg);
+          div.append(sev, body);
+          box.appendChild(div);
+        });
+      };
+      renderGroup("Errores", errors);
+      renderGroup("Avisos", warnings);
+    }
+  </script>
+</body>
+</html>
