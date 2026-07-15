@@ -743,7 +743,8 @@
         <div class="mini-card">
           <h4><code>content</code></h4>
           <p>PDF codificado en Base64 que generas tú. El nombre debe terminar en <code>.pdf</code>
-          (máx. 168 caracteres) y el tamaño combinado de todos los documentos del shipment no puede
+          (máx. 168 caracteres). El documento principal no puede superar <strong>3&nbsp;MB</strong>
+          decodificado, y el tamaño combinado de todos los documentos del shipment no puede
           superar <strong>30&nbsp;MB</strong> decodificados.</p>
         </div>
         <div class="mini-card">
@@ -933,6 +934,7 @@
         <tr><td>Shipments por lot</td><td>Configurable por cliente</td></tr>
         <tr><td>Parties por shipment</td><td>Configurable por cliente</td></tr>
         <tr><td>Firmantes (<code>signing_role=signer</code>) por shipment</td><td>Máx. 100</td></tr>
+        <tr><td>Tamaño del documento principal (decodificado)</td><td>Máx. 3 MB</td></tr>
         <tr><td>Tamaño combinado de documentos (decodificado)</td><td>Máx. 30 MB</td></tr>
         <tr><td>Nombre de documento</td><td>Máx. 168 caracteres, termina en <code>.pdf</code></td></tr>
         <tr><td>Documento principal</td><td>Exactamente 1, de tipo <code>transport_control_document</code> / <code>ecmr</code> / <code>consignment_note</code></td></tr>
@@ -940,7 +942,7 @@
         <tr><td>Orden de firma</td><td>Enteros ≥ 1 sin duplicados; consignors → drivers → consignees</td></tr>
         <tr><td>Móvil</td><td>E.164 (<code>+34600111222</code>), validado como número móvil real</td></tr>
         <tr><td>Reenvíos de notificación</td><td>Máx. 5 por party</td></tr>
-        <tr><td>Reintentos de envío a la plataforma de firma</td><td>3 (después, estado <code>error</code>)</td></tr>
+        <tr><td>Datos volcados al PDF en plantillas</td><td>Solo los pares clave-valor de <code>template_values</code>; el resto de datos del shipment no se vuelca</td></tr>
         <tr><td>Adjuntos post-creación</td><td>Solo en <code>created</code>, <code>ready_for_pickup</code>, <code>pending_delivery</code></td></tr>
         <tr><td>Cancelación</td><td><code>reason</code> obligatorio; no en <code>pending</code>/<code>error</code></td></tr>
       </table>
