@@ -749,9 +749,20 @@
         <div class="mini-card">
           <h4><code>template</code></h4>
           <p>Referencia una plantilla predefinida por su <code>template_code</code> y opcionalmente
-          un mapa <code>template_values</code>. El PDF se genera en la plataforma a partir de los
-          datos del shipment.</p>
+          un mapa <code>template_values</code>. El PDF se genera en la plataforma a partir de
+          esos valores.</p>
         </div>
+      </div>
+
+      <div class="callout">
+        <strong>Qué datos se vuelcan al documento:</strong> en los documentos generados por
+        plantilla, los únicos datos del shipment que se incorporan al PDF son los pares
+        clave-valor que envíes en <code>template_values</code>, <strong>exclusivamente</strong>.
+        El resto de datos del shipment (<code>metadata</code>, mercancías, direcciones, parties,
+        referencias…) <strong>no se vuelca automáticamente</strong> al documento: si quieres que
+        aparezcan, debes incluirlos explícitamente en <code>template_values</code>. En los
+        documentos aportados con <code>content</code> (sin plantilla) tampoco se vuelca ningún
+        dato: el PDF se usa tal cual lo envías.
       </div>
 
       <h3>Coordenadas de firma</h3>
