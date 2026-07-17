@@ -709,7 +709,9 @@
       </table>
       <div class="callout">
         <strong>Restricción:</strong> <code>delivery_without_signature_allowed = true</code> exige
-        <code>signature_collected_by_driver = true</code> en el mismo consignee. Además, en ese modo
+        <code>signature_collected_by_driver = true</code> en el mismo consignee. Solo puede
+        activarlo <strong>un único consignee</strong>, y debe ser el <strong>primero</strong> de los
+        consignees en el orden de firma. Además, en ese modo
         el <code>channel</code> y el contacto (<code>email</code>/<code>mobile</code>) del consignee
         deben coincidir con los del <strong>último driver</strong> del orden de firma: es su
         dispositivo el que recogerá la firma o la confirmación de entrega.
@@ -774,9 +776,9 @@
 
       <h3>Adjuntos después de la creación</h3>
       <p><code>POST /shipments/{id}/attachments</code> permite añadir adjuntos a un shipment ya
-      creado, mientras esté <strong>en curso</strong> (<code>created</code>,
-      <code>ready_for_pickup</code> o <code>pending_delivery</code>). No se admite en estados
-      finales ni en <code>pending</code>/<code>error</code>.</p>
+      creado en cualquier estado <strong>salvo</strong> <code>pending</code>, <code>error</code> y
+      <code>cancelled</code>. Sí se admite en <code>delivered</code> y <code>completed</code>
+      (por ejemplo, para incorporar documentación posterior a la entrega).</p>
 
       <h3>Descarga</h3>
       <p><code>GET /shipments/{id}/documents/download</code> devuelve los documentos, filtrables con
@@ -859,7 +861,7 @@
       <table>
         <tr><th>Canal</th><th>Requisito en el party</th><th>Disponible para</th></tr>
         <tr><td><span class="pill">email</span></td><td><code>email</code></td><td>signer, approver, cc</td></tr>
-        <tr><td><span class="pill">sms</span></td><td><code>mobile</code> (E.164)</td><td>signer; cc solo en flujo simplificado con conductor</td></tr>
+        <tr><td><span class="pill">sms</span></td><td><code>mobile</code> (E.164)</td><td>signer; cc solo para el driver en el flujo simplificado</td></tr>
         <tr><td><span class="pill">whatsapp</span></td><td><code>mobile</code> (E.164)</td><td>signer</td></tr>
       </table>
       <p>Las notificaciones siguen el orden de firma: al crearse el shipment se avisa al primer
@@ -904,7 +906,7 @@
       <h3>Formato de error</h3>
       <pre class="code"><code>{
   <span class="key">"error_code"</span>: <span class="str">"VALIDATION_ERROR"</span>,
-  <span class="key">"message"</span>: <span class="str">"Invalid input data"</span>,
+  <span class="key">"error_message"</span>: <span class="str">"Invalid input data"</span>,
   <span class="key">"details"</span>: [ <span class="str">"party[2].mobile: must be a valid E.164 mobile number"</span> ]
 }</code></pre>
       <table>
@@ -943,7 +945,8 @@
         <tr><td>Móvil</td><td>E.164 (<code>+34600111222</code>), validado como número móvil real</td></tr>
         <tr><td>Reenvíos de notificación</td><td>Máx. 5 por party</td></tr>
         <tr><td>Datos volcados al PDF en plantillas</td><td>Solo los pares clave-valor de <code>template_values</code>; el resto de datos del shipment no se vuelca</td></tr>
-        <tr><td>Adjuntos post-creación</td><td>Solo en <code>created</code>, <code>ready_for_pickup</code>, <code>pending_delivery</code></td></tr>
+        <tr><td>Adjuntos post-creación</td><td>En cualquier estado salvo <code>pending</code>, <code>error</code>, <code>cancelled</code></td></tr>
+        <tr><td>Entrega sin firma (<code>delivery_without_signature_allowed</code>)</td><td>Máx. 1 consignee, el primero en el orden de firma; exige <code>signature_collected_by_driver</code></td></tr>
         <tr><td>Cancelación</td><td><code>reason</code> obligatorio; no en <code>pending</code>/<code>error</code></td></tr>
       </table>
       <div class="callout info">
