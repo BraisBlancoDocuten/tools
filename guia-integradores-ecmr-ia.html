@@ -1058,6 +1058,11 @@
       return isChrome && !isOtherChromium;
     }
 
+    // Asistente deshabilitado temporalmente: la Prompt API falla al crear la
+    // sesión en algunos dispositivos (InvalidStateError). Quitar este return
+    // para reactivarlo.
+    return;
+
     if (!isGoogleChrome()) {
       return;
     }
