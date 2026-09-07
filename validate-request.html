@@ -471,10 +471,9 @@
           }
         }
 
-        // Channel restrictions by role
-        if (role === "approver" && p.channel != null && p.channel !== "email") {
-          f.error(`${e.path}.channel`, "channel debe ser 'email' cuando signing_role es 'approver'.");
-        }
+        // Channel restrictions by role.
+        // DOC-14177: un approver admite cualquier canal, igual que un signer; solo cc queda
+        // restringido (email, salvo el driver cc del flujo simplificado, que también admite sms).
         if (role === "cc" && p.channel != null) {
           if (flowType === "SIMPLIFIED" && e.type === "driver") {
             if (!["email", "sms"].includes(p.channel)) {
@@ -577,6 +576,13 @@
       all.filter((e) => e.type === "consignee").forEach((e) => {
         const p = e.party;
         if (p.signature_collected_by_driver === true) {
+          // el flag solo aplica a un consignee signer: un approver, un cc o uno sin rol no
+          // produce firma manuscrita, así que el flag sobre ellos se rechaza
+          if (p.signing_role !== "signer") {
+            f.error(`${e.path}.signature_collected_by_driver`, "signature_collected_by_driver solo se admite si signing_role es 'signer' (un approver, un cc o un consignee sin rol no produce firma manuscrita).");
+          } else if (p.signature_type !== "biometric") {
+            f.error(`${e.path}.signature_type`, "signature_type debe ser 'biometric' cuando signature_collected_by_driver es true (la firma es manuscrita sobre el dispositivo del conductor).");
+          }
           if (isBlank(p.channel)) {
             f.error(`${e.path}.channel`, "channel es obligatorio cuando signature_collected_by_driver es true.");
           } else if (lastDriver) {
