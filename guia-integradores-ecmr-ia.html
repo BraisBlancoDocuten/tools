@@ -663,7 +663,7 @@
       <table>
         <tr><th><code>signing_role</code></th><th>Comportamiento</th></tr>
         <tr><td><span class="pill">signer</span></td><td>Firma el documento. Requiere <code>signature_type</code>. Genera webhook <code>SIGNATURE</code> al firmar.</td></tr>
-        <tr><td><span class="pill">approver</span></td><td>Aprueba sin firmar. Solo puede notificarse por <strong>email</strong>. Genera webhook <code>APPROVAL</code>.</td></tr>
+        <tr><td><span class="pill">approver</span></td><td>Aprueba sin firmar. Admite <strong>cualquier canal</strong> de notificación (email, SMS o WhatsApp). Genera webhook <code>APPROVAL</code>.</td></tr>
         <tr><td><span class="pill">cc</span></td><td>Recibe el documento en copia. No firma, no aprueba y <strong>no genera webhooks</strong>.</td></tr>
       </table>
 
@@ -677,6 +677,11 @@
           se valida con libphonenumber, no solo el patrón.</li>
         <li>Canal <code>sms</code> o <code>whatsapp</code> ⇒ <code>mobile</code> obligatorio.
           Canal <code>email</code> ⇒ <code>email</code> obligatorio.</li>
+        <li>El <code>channel</code> permitido depende del <code>signing_role</code>:
+          un <code>signer</code> y un <code>approver</code> admiten <strong>cualquier canal</strong>;
+          una party en copia (<code>cc</code>) solo <code>email</code>, salvo el <code>driver</code>
+          en copia del flujo simplificado, que además admite <code>sms</code> (nunca
+          <code>whatsapp</code>).</li>
         <li>El canal elegido debe estar <strong>habilitado para tu cliente</strong>; si no, <code>400</code>.</li>
       </ul>
 
@@ -715,6 +720,19 @@
         el <code>channel</code> y el contacto (<code>email</code>/<code>mobile</code>) del consignee
         deben coincidir con los del <strong>último driver</strong> del orden de firma: es su
         dispositivo el que recogerá la firma o la confirmación de entrega.
+      </div>
+      <div class="callout">
+        <strong>Restricción:</strong> <code>signature_collected_by_driver = true</code> solo se admite
+        en un consignee cuyo <code>signing_role</code> sea <strong><code>signer</code></strong>. Un
+        <code>approver</code>, un consignee en copia (<code>cc</code>) o uno sin rol de firma no
+        produce una firma manuscrita, así que activar el flag sobre ellos se rechaza. Y su
+        <code>signature_type</code> debe ser <strong><code>biometric</code></strong>: la firma es
+        manuscrita sobre el dispositivo del conductor, así que <code>automated</code> (firma en
+        servidor) y <code>otp</code> (código enviado al canal del propio firmante) no aplican.
+        Como consecuencia, esta opción —y con ella
+        <code>delivery_without_signature_allowed</code>, que la exige— solo está disponible en el
+        <strong>flujo completo</strong>: los flujos simplificados obligan a que todos sus consignees
+        sean <code>cc</code>.
       </div>
       <p class="muted">Cuando la entrega se confirma sin firma, el party del consignee aparece como
       delegado en el conductor y el shipment transiciona a <code>delivered</code> con normalidad,
@@ -861,8 +879,8 @@
       <table>
         <tr><th>Canal</th><th>Requisito en el party</th><th>Disponible para</th></tr>
         <tr><td><span class="pill">email</span></td><td><code>email</code></td><td>signer, approver, cc</td></tr>
-        <tr><td><span class="pill">sms</span></td><td><code>mobile</code> (E.164)</td><td>signer; cc solo para el driver en el flujo simplificado</td></tr>
-        <tr><td><span class="pill">whatsapp</span></td><td><code>mobile</code> (E.164)</td><td>signer</td></tr>
+        <tr><td><span class="pill">sms</span></td><td><code>mobile</code> (E.164)</td><td>signer, approver; cc solo para el driver en el flujo simplificado</td></tr>
+        <tr><td><span class="pill">whatsapp</span></td><td><code>mobile</code> (E.164)</td><td>signer, approver</td></tr>
       </table>
       <p>Las notificaciones siguen el orden de firma: al crearse el shipment se avisa al primer
       grupo de firmantes, y cada firma dispara el aviso al siguiente. Si creas varios shipments en
@@ -878,6 +896,36 @@
         <li>Si el party aún no ha sido notificado nunca (no le toca todavía) → <code>409 NO_PREVIOUS_NOTIFICATION</code>.</li>
         <li>Si el canal falla en el reenvío → <code>502 NOTIFICATION_DELIVERY_FAILED</code>; puedes reintentar.</li>
       </ul>
+
+      <h3>Reasignar una party</h3>
+      <p><code>POST /parties/{id}/reassign</code> transfiere la firma <strong>pendiente</strong> de un
+      party a un nuevo destinatario (email, móvil o persona equivocados) sin cancelar ni recrear el
+      shipment: se conservan el <code>shipment_id</code>, las firmas ya completadas y el rastro de
+      auditoría. El cuerpo lleva los datos del nuevo destinatario: <code>name</code> y
+      <code>email</code> (obligatorios), <code>mobile</code> (obligatorio si el canal es
+      <span class="pill">sms</span>/<span class="pill">whatsapp</span>), <code>tax_id</code>, y
+      <code>notification_channel</code>, <code>language</code> y <code>signature_type</code>
+      (estos tres últimos se heredan del party original si se omiten; <code>tax_id</code> no se
+      hereda: si se omite, el nuevo destinatario queda sin identificador fiscal).</p>
+      <p><strong>Solo es reasignable el party que ostenta el turno actual del flujo</strong>: el que
+      está pendiente de actuar y con todos los de orden anterior ya completados. Un party en copia
+      (<code>cc</code>) <strong>nunca</strong> es reasignable, porque no retiene el flujo. Restricciones:</p>
+      <ul class="checks">
+        <li>Cuerpo sin los campos obligatorios (<code>name</code>, <code>email</code>) o <code>mobile</code> fuera del formato E.164 → <code>400 VALIDATION_ERROR</code>.</li>
+        <li>Canal <span class="pill">sms</span>/<span class="pill">whatsapp</span> (indicado o heredado) sin <code>mobile</code>, o <code>id</code> que no es un UUID → <code>400 INVALID_ARGUMENT</code>.</li>
+        <li>Party inexistente o de un shipment de otro cliente → <code>404 NOT_FOUND</code>.</li>
+        <li>Shipment todavía no enviado a firma (sin flujo activo que reasignar) → <code>409 INVALID_STATE</code>.</li>
+        <li>Shipment en estado terminal (<code>delivered</code>, <code>completed</code>, <code>cancelled</code>, <code>error</code>) → <code>409 SHIPMENT_TERMINAL</code>.</li>
+        <li>Party con rol <code>cc</code> → <code>409 PARTY_ROLE_NOT_REASSIGNABLE</code>.</li>
+        <li>Party que no es la titular del turno (aún no le toca o ya actuó) → <code>409 PARTY_NOT_CURRENT_SIGNER</code>.</li>
+        <li>Flujo paralelo (varias parties activas en el mismo orden) → <code>409 PARALLEL_FLOW_NOT_REASSIGNABLE</code>.</li>
+        <li>Party ya reasignada → <code>409 PARTY_ALREADY_DELEGATED</code> (reintento idempotente tras éxito).</li>
+        <li>Si la plataforma de firma rechaza la operación → <code>502</code> con el código y mensaje propagados.</li>
+      </ul>
+      <p>La operación es <strong>asíncrona</strong>: responde <code>202 Accepted</code> con el
+      <code>party_id</code> original y el <code>shipment_id</code>. El nuevo party (con su
+      <code>party_id</code> y su enlace de firma) queda disponible poco después, consultable por el
+      endpoint del shipment, y se le notifica de inmediato.</p>
     </section>
 
     <!-- ═══════════════ 11 · CANCELACIÓN ═══════════════ -->
@@ -942,9 +990,11 @@
         <tr><td>Contenido de documento</td><td><code>content</code> (Base64) <strong>o</strong> <code>template</code>, nunca ambos</td></tr>
         <tr><td>Orden de firma</td><td>Enteros ≥ 1 sin duplicados; consignors → drivers → consignees</td></tr>
         <tr><td>Móvil</td><td>E.164 (<code>+34600111222</code>), validado como número móvil real</td></tr>
+        <tr><td>Canal según <code>signing_role</code></td><td><code>signer</code> y <code>approver</code>: cualquier canal. <code>cc</code>: solo <code>email</code>, salvo el <code>driver</code> en copia del flujo simplificado, que también admite <code>sms</code></td></tr>
         <tr><td>Reenvíos de notificación</td><td>Máx. 5 por party</td></tr>
         <tr><td>Datos volcados al PDF en plantillas</td><td>Solo los pares clave-valor de <code>template_values</code>; el resto de datos del shipment no se vuelca</td></tr>
         <tr><td>Adjuntos post-creación</td><td>En cualquier estado salvo <code>pending</code>, <code>error</code>, <code>cancelled</code></td></tr>
+        <tr><td>Firma en el dispositivo del conductor (<code>signature_collected_by_driver</code>)</td><td>Solo en un consignee con <code>signing_role = signer</code> (no <code>approver</code>, <code>cc</code> ni sin rol); exige <code>signature_type = biometric</code>; el <code>channel</code> y el contacto deben coincidir con los del último driver del orden de firma. Solo disponible en el flujo completo</td></tr>
         <tr><td>Entrega sin firma (<code>delivery_without_signature_allowed</code>)</td><td>Máx. 1 consignee, el primero en el orden de firma; exige <code>signature_collected_by_driver</code></td></tr>
         <tr><td>Cancelación</td><td><code>reason</code> obligatorio; no en <code>pending</code>/<code>error</code></td></tr>
       </table>
