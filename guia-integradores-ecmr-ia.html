@@ -532,7 +532,9 @@
               <code>pending</code> y el envío a la plataforma de firma se procesa en segundo plano.</li>
             <li>Los fallos de procesamiento no se ven en la respuesta HTTP: llegan por el
               <strong>webhook de lot</strong> (ver <a href="#webhooks">§9</a>) o consultando el estado.</li>
-            <li>Todos los shipments del lot deben compartir la <strong>misma estructura de firmantes</strong>
+            <li>Todos los shipments del lot deben compartir la <strong>misma estructura de parties</strong>
+              (en cada <code>order</code>, el mismo <code>party_type</code> y el mismo <code>signing_role</code>:
+              no se puede mezclar un driver <code>cc</code> en un shipment con un driver <code>approver</code> en otro)
               y el mismo tipo de flujo (ver <a href="#flujos-firma">§4</a>).</li>
           </ul>
         </div>
@@ -542,8 +544,9 @@
             <li>Un único shipment por llamada, sin lot.</li>
             <li>La llamada <strong>espera</strong> a que el proceso de firma quede creado en Docuten:
               el <code>201</code> devuelve el shipment ya en estado <code>created</code>.</li>
-            <li>Si el envío a la plataforma de firma falla, lo sabes en la propia respuesta
-              (<code>502</code>).</li>
+            <li>Si el envío a la plataforma de firma falla, lo sabes en la propia respuesta:
+              <code>502</code> si la rechazó, <code>504</code> si dejó de responder. La diferencia
+              importa para decidir si reintentar (ver <a href="#errores">Errores</a>).</li>
             <li>Latencia mayor por llamada; recomendado para creación unitaria u orientada a eventos.</li>
           </ul>
         </div>
@@ -561,6 +564,49 @@
       el mismo número de firmantes, con los mismos <code>party_type</code> en cada posición del
       orden de firma. Si mezclas, por ejemplo, un shipment con firma del consignee y otro sin ella,
       la creación completa del lot se rechaza con <code>400</code>.</p>
+
+      <h3>Archivar el porte bajo una empresa u oficina</h3>
+      <p>Dos campos opcionales del shipment, <code>cod_company</code> y <code>cod_office</code>,
+      determinan bajo qué empresa y qué oficina de tu organización quedan archivados el porte y sus
+      documentos firmados. El valor es un <strong>código</strong>, no el nombre de la empresa o de la
+      oficina.</p>
+
+      <div class="callout">
+        <strong>Requieren configuración previa:</strong> los códigos no son de libre invención. Deben
+        estar dados de alta para tu cuenta antes de que surtan efecto. Solicítalos en la puesta en
+        marcha y usa exactamente los que se te entreguen.
+      </div>
+
+      <pre class="code"><code>{
+  <span class="key">"shipment_reference"</span>: <span class="str">"REF-2026-0042"</span>,
+  <span class="key">"cod_company"</span>: <span class="str">"SKSP"</span>,   <span class="comment">// código de empresa</span>
+  <span class="key">"cod_office"</span>: <span class="str">"FIN"</span>,     <span class="comment">// código de oficina</span>
+  ...
+}</code></pre>
+
+      <ul>
+        <li>Los dos son <strong>opcionales e independientes</strong>: puedes enviar solo uno. Si
+          omites uno, el porte no queda archivado en esa dimensión.</li>
+        <li>Máximo 128 caracteres cada uno. Un valor vacío o en blanco equivale a no enviarlo.</li>
+        <li>Funcionan igual en el alta individual (<code>POST /shipments</code>) y en la de lote
+          (<code>POST /lots</code>), donde se indican por cada shipment del lote.</li>
+        <li>Se devuelven en el detalle del porte ya normalizados: se recortan los espacios
+          exteriores, y un valor en blanco se devuelve como ausente.</li>
+        <li><strong>Los códigos no se validan en el alta.</strong> Si envías uno que no está dado de
+          alta, el porte se crea sin error y simplemente no queda archivado donde esperas.</li>
+        <li><strong>Envía siempre los dos códigos juntos.</strong> Si mandas solo
+          <code>cod_office</code> y ese código existe en más de una de tus empresas, el alta del
+          porte falla y queda en estado <code>error</code>.</li>
+      </ul>
+
+      <h3>Metadatos propios</h3>
+      <p>El array <code>metadata</code> acepta pares nombre/valor libres
+      (<code>{"name": "prioridad", "value": "alta"}</code>) para tu
+      propio uso. Son <strong>internos de eCMR</strong>: se guardan, se devuelven en el detalle del
+      shipment (<code>GET /shipments/{id}?include=metadata</code>) y <strong>no salen a ningún
+      sistema externo</strong>. Para archivar el porte bajo una empresa u oficina usa
+      <code>cod_company</code> y <code>cod_office</code>, no metadatos.</p>
+
     </section>
 
     <!-- ═══════════════ 4 · FLUJOS DE FIRMA ═══════════════ -->
@@ -579,14 +625,14 @@
         <tr>
           <td><strong>Simplificado</strong><br><span class="pill">simplified</span></td>
           <td>Solo el <code>consignor</code></td>
-          <td>Drivers, consignees y others deben ir como <code>cc</code></td>
-          <td><span class="pill ok">completed</span></td>
+          <td>Drivers: todos <code>cc</code>, <strong>o</strong> exactamente <strong>1</strong> <code>driver</code> <code>approver</code> (sin mezclar). Consignees y others <code>cc</code>. Ningún otro party puede ser <code>approver</code></td>
+          <td><span class="pill ok">completed</span> (drivers <code>cc</code>)<br><span class="pill ok">delivered</span> (driver <code>approver</code>)</td>
         </tr>
         <tr>
           <td><strong>Simplificado con firma del conductor</strong><br><span class="pill">simplified_with_driver_signature</span></td>
-          <td><code>consignor</code> + exactamente <strong>1</strong> <code>driver</code></td>
-          <td>Consignees y others deben ir como <code>cc</code></td>
-          <td><span class="pill ok">completed</span></td>
+          <td><code>consignor</code> + exactamente <strong>1</strong> <code>driver</code> <code>signer</code></td>
+          <td>Opcionalmente <strong>1</strong> <code>driver</code> <code>approver</code> posterior al firmante; ningún driver <code>cc</code>. Consignees y others <code>cc</code>. Ningún otro party puede ser <code>approver</code></td>
+          <td><span class="pill ok">completed</span> (sin approver)<br><span class="pill ok">delivered</span> (con driver <code>approver</code>)</td>
         </tr>
         <tr>
           <td><strong>Completo</strong><br><span class="pill">complete</span></td>
@@ -600,12 +646,61 @@
       <p>El campo <code>order</code> (entero ≥ 1, sin duplicados dentro del shipment) define la
       secuencia. En el flujo completo el orden debe respetar la realidad del transporte:
       <strong>todos los consignors firman antes que los drivers, y todos los drivers antes que los
-      consignees</strong>. Un orden que viole esta secuencia se rechaza con <code>400</code>.</p>
+      consignees</strong>. Un orden que viole esta secuencia se rechaza con <code>400</code>.
+      El flujo simplificado está exento de esta regla mientras nadie actúe después del consignor;
+      <strong>con un driver <code>approver</code> se aplica la regla estándar</strong>, y en el
+      simplificado con firma del conductor el approver debe ir <strong>después</strong> del driver
+      firmante. Además, ningún party <code>cc</code> puede ocupar un <code>order</code>
+      <strong>entre el último firmante y el driver approver</strong>: los <code>cc</code> reciben su
+      copia cuando el shipment se cierra, y una posición intermedia les generaría una notificación
+      duplicada.</p>
 
       <div class="callout">
         <strong>Importante:</strong> el <code>carrier</code> es informativo — nunca dispara
         transiciones de estado del shipment, aunque figure como firmante. Los parties
         <code>cc</code> no firman ni generan webhooks.
+      </div>
+
+      <h3>Para qué sirve un aprobador</h3>
+      <p>Un <code>approver</code> valida el documento sin estampar firma: no lleva
+      <code>signature_type</code> ni coordenadas de firma, admite cualquier canal de notificación y
+      genera el webhook <code>APPROVAL</code>. No cuenta para la detección del flujo. Tiene tres
+      usos distintos:</p>
+      <table>
+        <tr><th>Uso</th><th>Composición</th><th>Efecto</th></tr>
+        <tr>
+          <td><strong>Conductor de cierre</strong></td>
+          <td>Flujos simplificados: <strong>un único</strong> <code>driver</code> con
+            <code>signing_role = approver</code>, con <code>order</code> posterior al del último
+            firmante</td>
+          <td>Declara la llegada a destino: el porte pasa por <code>pending_delivery</code> y cierra
+            en <code>delivered</code> sin firma del destinatario. Es una declaración de llegada, no
+            una prueba de entrega firmada: no hay evidencia del consignee</td>
+        </tr>
+        <tr>
+          <td><strong>Aprobador inicial</strong></td>
+          <td>Solo en el flujo completo: una party <code>other</code>, <code>carrier</code> o
+            <code>consignor</code> con rol <code>approver</code> y <code>order</code> anterior al del
+            cargador firmante</td>
+          <td>El porte <strong>no avanza</strong> a <code>ready_for_pickup</code> mientras esté
+            pendiente: toda party con rol distinto de <code>cc</code> situada antes del primer driver
+            tiene que haber actuado. Encaja con el operador de transporte que valida el porte antes
+            de ponerlo en circulación</td>
+        </tr>
+        <tr>
+          <td><strong>Segundo conductor</strong></td>
+          <td>Flujo completo: un <code>driver</code> <code>approver</code> con <code>order</code>
+            posterior al del conductor firmante y anterior al del destinatario</td>
+          <td>No dispara por sí mismo ninguna transición —en el flujo completo el estado lo mueve el
+            <em>primer</em> driver con rol—, pero es quien puede ejecutar el
+            <a href="#parties">cambio de conductor</a> en ruta</td>
+        </tr>
+      </table>
+      <div class="callout">
+        <strong>Restricciones:</strong> en los dos flujos simplificados <strong>solo un
+        <code>driver</code></strong> puede aprobar, y como máximo uno (un <code>approver</code> en un
+        consignor, carrier u other se rechaza con <code>400</code>). En el flujo completo no hay
+        restricción de tipo. Un aprobador nunca lleva coordenadas de firma.
       </div>
     </section>
 
@@ -632,9 +727,9 @@
         <tr><td><span class="pill">pending</span></td><td>Creado vía lot, aún no enviado a la plataforma de firma. Solo existe en creación asíncrona.</td></tr>
         <tr><td><span class="pill">created</span></td><td>Proceso de firma creado; los primeros firmantes ya han sido notificados.</td></tr>
         <tr><td><span class="pill">ready_for_pickup</span></td><td>El cargador (y demás firmantes previos al conductor) han firmado: la mercancía puede recogerse.</td></tr>
-        <tr><td><span class="pill">pending_delivery</span></td><td>El conductor ha firmado la recogida; mercancía en tránsito.</td></tr>
-        <tr><td><span class="pill ok">delivered</span></td><td>El destinatario ha firmado la entrega. Fin del flujo completo.</td></tr>
-        <tr><td><span class="pill ok">completed</span></td><td>Fin de los flujos simplificados (donde no firma el consignee).</td></tr>
+        <tr><td><span class="pill">pending_delivery</span></td><td>Mercancía en tránsito. En el flujo completo y en el simplificado con firma del conductor, el conductor ha firmado la recogida; en el simplificado con driver <code>approver</code> nadie firma la recogida, así que se entra directamente desde <code>created</code> al firmar el consignor.</td></tr>
+        <tr><td><span class="pill ok">delivered</span></td><td>Alguien ha confirmado la llegada. En el flujo completo, el destinatario ha firmado la entrega. En los flujos simplificados con driver <code>approver</code>, el conductor ha aprobado al llegar: es una <strong>declaración del conductor</strong>, no una firma del destinatario, y <code>delivered_without_signature</code> queda a <code>false</code>. Distingue ambos casos por la composición de parties: una entrada de <code>parties[]</code> con <code>party_type = driver</code> y <code>signing_role = approver</code> indica que la llegada la declaró el conductor.</td></tr>
+        <tr><td><span class="pill ok">completed</span></td><td>Fin de los flujos simplificados en los que nadie confirma la entrega (drivers en copia, o driver firmante sin approver).</td></tr>
         <tr><td><span class="pill no">error</span></td><td>El envío a la plataforma de firma falló de forma permanente tras agotar los reintentos.</td></tr>
         <tr><td><span class="pill no">cancelled</span></td><td>Cancelado por el integrador vía API.</td></tr>
       </table>
@@ -644,6 +739,18 @@
       directamente de <code>created</code> a <code>completed</code>. En el
       <strong>simplificado con firma del conductor</strong>, la firma del consignor lo lleva a
       <code>ready_for_pickup</code> y la del driver a <code>completed</code>.</p>
+
+      <p>Si declaras al conductor como <code>approver</code>, su aprobación significa
+      <strong>«he llegado a destino»</strong> y el shipment termina en <code>delivered</code> en lugar
+      de <code>completed</code>: en el <strong>simplificado</strong>, la firma del consignor lo lleva
+      a <code>pending_delivery</code> (se salta <code>ready_for_pickup</code>, porque nadie firma la
+      recogida) y la aprobación del driver a <code>delivered</code>; en el <strong>simplificado con
+      firma del conductor</strong>, la firma del driver lo lleva a <code>pending_delivery</code> y la
+      aprobación del segundo driver a <code>delivered</code>. El driver approver recibe el aviso en
+      cuanto le llega el turno, así que nada le impide aprobar antes de llegar: trata ese
+      <code>delivered</code> como una declaración del conductor, no como prueba de entrega firmada
+      por el destinatario. Las copias (<code>cc</code>) se notifican al cerrarse el shipment, igual que
+      en los flujos simplificados sin approver.</p>
 
       <div class="callout info">
         <strong>Cómo enterarte de los cambios:</strong> cada transición provocada por una firma
@@ -677,20 +784,51 @@
           se valida con libphonenumber, no solo el patrón.</li>
         <li>Canal <code>sms</code> o <code>whatsapp</code> ⇒ <code>mobile</code> obligatorio.
           Canal <code>email</code> ⇒ <code>email</code> obligatorio.</li>
-        <li>El <code>channel</code> permitido depende del <code>signing_role</code>:
-          un <code>signer</code> y un <code>approver</code> admiten <strong>cualquier canal</strong>;
-          una party en copia (<code>cc</code>) solo <code>email</code>, salvo el <code>driver</code>
-          en copia del flujo simplificado, que además admite <code>sms</code> (nunca
-          <code>whatsapp</code>).</li>
+        <li>Cualquier <code>signing_role</code> admite <strong>cualquier canal</strong>
+          (<code>email</code>, <code>sms</code> o <code>whatsapp</code>), también las parties en
+          copia (<code>cc</code>) y el driver <code>approver</code> de los flujos simplificados.</li>
         <li>El canal elegido debe estar <strong>habilitado para tu cliente</strong>; si no, <code>400</code>.</li>
       </ul>
 
       <h3>Delegación</h3>
-      <p>Un firmante puede delegar su firma en otra persona (por ejemplo, un cambio de conductor en
-      ruta). Cuando ocurre, el party original queda en estado <code>delegated</code> y aparece un
-      <strong>nuevo party sucesor</strong> en el shipment que hereda su posición en el flujo. Tu
-      integración debe tolerar que <code>GET /shipments/{id}</code> devuelva más parties de los que
-      enviaste en la creación.</p>
+      <p>Un firmante puede delegar su actuación en otra persona. Cuando ocurre, el party original
+      queda en estado <code>delegated</code> y aparece un <strong>nuevo party sucesor</strong> en el
+      shipment, que hereda su posición en el flujo, su <code>signing_role</code> y su idioma — un
+      aprobador delega por tanto en un aprobador, y se crea sin <code>signature_type</code> porque no
+      firma. Tu integración debe tolerar que <code>GET /shipments/{id}</code> devuelva más parties de
+      los que enviaste en la creación.</p>
+
+      <h3>Cambio de conductor y matrícula</h3>
+      <p>El conductor que figura en el alta no siempre es el que termina el transporte. El relevo se
+      registra por dos vías, y ambas producen el mismo efecto en el API: delegación del party y
+      aparición de un sucesor.</p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <h4>Desde la app del conductor</h4>
+          <p>Un conductor con rol <code>approver</code> registra al relevo indicando nombre, NIF,
+          contacto y <strong>matrícula</strong> del nuevo vehículo. Ese es el motivo por el que se
+          añade un segundo conductor aprobador al flujo (ver <a href="#flujos-firma">§4</a>).</p>
+        </div>
+        <div class="mini-card">
+          <h4>Desde tu sistema</h4>
+          <p><code>POST /parties/{id}/reassign</code> transfiere la actuación pendiente del party que
+          ostenta el turno, sin cancelar ni recrear el porte. Detalle y errores en
+          <a href="#notificaciones">§10</a>.</p>
+        </div>
+      </div>
+      <p>La matrícula del conductor del alta viaja en el campo <code>license_plate</code> de la party
+      <code>driver</code>; la del relevo la teclea quien registra el cambio. Con un conductor
+      aprobador conviven legítimamente <strong>dos matrículas</strong> en un mismo porte: la del
+      vehículo de la recogida y la del de la entrega.</p>
+      <div class="callout">
+        <strong>Reflejo en el documento:</strong> si tu cuenta tiene activada la opción de
+        <strong>anexo de vehículos</strong>, el documento incorpora una página anexa con una línea por
+        participante y <strong>cada relevo escribe en ella su matrícula</strong>, de modo que el
+        cambio de conductor queda reflejado en el propio documento firmado. Esa misma opción es
+        <strong>requisito</strong> para que un conductor aprobador pueda registrar el relevo desde la
+        app: sin ella el cambio solo se hace por API y el documento no recoge la matrícula nueva.
+        Es una configuración por cuenta: solicítala en la puesta en marcha.
+      </div>
     </section>
 
     <!-- ═══════════════ 7 · ENTREGA SIN FIRMA ═══════════════ -->
@@ -752,10 +890,26 @@
         <tr><td><code>ecmr</code></td><td>Carta de porte electrónica internacional (eCMR)</td></tr>
         <tr><td><code>consignment_note</code></td><td>Carta de porte nacional</td></tr>
       </table>
+      <p>El documento principal es el que se envía a la plataforma de firma, así que
+      <strong>debe declarar <code>signable: true</code></strong>. Un shipment cuyo documento principal
+      llegue con <code>signable: false</code> no describe ningún flujo de firma y se rechaza con
+      <code>400</code> (<code>NO_SIGNABLE_MAIN_DOCUMENT</code> en <code>details</code>), tanto en
+      <code>POST /shipments</code> como en <code>POST /lots</code>.</p>
       <p>El resto de tipos (<code>invoice</code>, <code>contract</code>, <code>delivery_note</code>,
       <code>order</code>, <code>adr_certificate</code>, <code>other</code>) viajan como
       <strong>adjuntos</strong>. Los adjuntos pueden ser firmables o no; si un adjunto es firmable,
       debe declarar al menos un firmante que sea <code>signer</code> del shipment.</p>
+
+      <div class="callout">
+        <strong>Adjunto no firmable: <code>signers</code> declara quién lo ve.</strong> Un adjunto con
+        <code>signable: false</code> es un documento solo de distribución: nadie lo firma, y su lista
+        <code>signers</code> es la que concede la visibilidad (por ejemplo, un solo <code>order</code> de un
+        party en copia hace el adjunto visible únicamente para él). Esa lista <strong>sí se valida</strong>:
+        cada <code>order</code> debe corresponder a un party con <code>signing_role</code> —un party sin rol
+        no participa en el flujo y nunca llegaría a verlo— y ninguna entrada puede llevar
+        <code>coordinate</code>, porque el documento no se firma
+        (<code>COORDINATE_ON_NON_SIGNABLE_DOCUMENT</code>).
+      </div>
 
       <h3>Contenido propio o plantilla — nunca ambos</h3>
       <p>Cada documento se aporta de una de estas dos formas, <strong>excluyentes entre sí</strong>:</p>
@@ -790,7 +944,8 @@
       <p>Puedes posicionar las firmas en el PDF con coordenadas por firmante. Rige la regla
       <strong>"todos o ninguno"</strong>: dentro de un documento, o todos los signers llevan
       coordenadas o ninguno las lleva. Los parties <code>cc</code> y <code>approver</code> nunca
-      llevan coordenadas (no estampan firma).</p>
+      llevan coordenadas (no estampan firma), y un documento con <code>signable: false</code> tampoco
+      admite ninguna: al no firmarse, una ubicación de firma no significaría nada.</p>
 
       <h3>Adjuntos después de la creación</h3>
       <p><code>POST /shipments/{id}/attachments</code> permite añadir adjuntos a un shipment ya
@@ -879,8 +1034,8 @@
       <table>
         <tr><th>Canal</th><th>Requisito en el party</th><th>Disponible para</th></tr>
         <tr><td><span class="pill">email</span></td><td><code>email</code></td><td>signer, approver, cc</td></tr>
-        <tr><td><span class="pill">sms</span></td><td><code>mobile</code> (E.164)</td><td>signer, approver; cc solo para el driver en el flujo simplificado</td></tr>
-        <tr><td><span class="pill">whatsapp</span></td><td><code>mobile</code> (E.164)</td><td>signer, approver</td></tr>
+        <tr><td><span class="pill">sms</span></td><td><code>mobile</code> (E.164)</td><td>signer, approver, cc</td></tr>
+        <tr><td><span class="pill">whatsapp</span></td><td><code>mobile</code> (E.164)</td><td>signer, approver, cc</td></tr>
       </table>
       <p>Las notificaciones siguen el orden de firma: al crearse el shipment se avisa al primer
       grupo de firmantes, y cada firma dispara el aviso al siguiente. Si creas varios shipments en
@@ -913,6 +1068,7 @@
       <ul class="checks">
         <li>Cuerpo sin los campos obligatorios (<code>name</code>, <code>email</code>) o <code>mobile</code> fuera del formato E.164 → <code>400 VALIDATION_ERROR</code>.</li>
         <li>Canal <span class="pill">sms</span>/<span class="pill">whatsapp</span> (indicado o heredado) sin <code>mobile</code>, o <code>id</code> que no es un UUID → <code>400 INVALID_ARGUMENT</code>.</li>
+        <li>Canal (indicado o heredado) no habilitado para tu cliente → <code>400 INVALID_ARGUMENT</code> con <code>Notification channels not enabled: &lt;canal&gt;</code>. Se comprueba contra la configuración actual, así que un canal heredado que se deshabilitó después de crear el porte también se rechaza.</li>
         <li>Party inexistente o de un shipment de otro cliente → <code>404 NOT_FOUND</code>.</li>
         <li>Shipment todavía no enviado a firma (sin flujo activo que reasignar) → <code>409 INVALID_STATE</code>.</li>
         <li>Shipment en estado terminal (<code>delivered</code>, <code>completed</code>, <code>cancelled</code>, <code>error</code>) → <code>409 SHIPMENT_TERMINAL</code>.</li>
@@ -964,8 +1120,43 @@
         <tr><td>409</td><td><code>INVALID_STATE</code>, <code>ACTION_ALREADY_COMPLETED</code>, <code>NO_PREVIOUS_NOTIFICATION</code></td><td>La operación no es válida en el estado actual.</td></tr>
         <tr><td>429</td><td><code>RESEND_LIMIT_REACHED</code></td><td>Límite de reenvíos de notificación alcanzado.</td></tr>
         <tr><td>500</td><td><code>INTERNAL_ERROR</code></td><td>Error inesperado; reporta el caso con el timestamp.</td></tr>
-        <tr><td>502</td><td><code>EXTERNAL_SERVICE_ERROR</code>, <code>NOTIFICATION_DELIVERY_FAILED</code></td><td>La plataforma de firma o el canal de notificación no respondió; suele ser transitorio, reintenta.</td></tr>
+        <tr><td>502</td><td><code>EXTERNAL_SERVICE_ERROR</code>, <code>NOTIFICATION_DELIVERY_FAILED</code></td><td>La plataforma de firma rechazó la petición, o el canal de notificación no respondió. Suele ser transitorio y puedes reintentar; lee antes la nota de abajo.</td></tr>
+        <tr><td>504</td><td><code>DOCUTEN_TIMEOUT</code></td><td>La plataforma de firma no respondió a tiempo. Si reintentar es seguro <strong>depende de la operación</strong>: lee antes la nota de abajo.</td></tr>
       </table>
+      <p>Un <code>400</code> de validación siempre llega con <code>error_code</code>
+      <code>VALIDATION_ERROR</code>; el detalle concreto va en <code>details</code>. Algunas reglas
+      añaden además un <strong>código estable al principio del mensaje</strong>, para que puedas
+      detectarlas sin depender del texto: <code>NO_SIGNABLE_MAIN_DOCUMENT</code> (el documento principal
+      no es firmable) y <code>COORDINATE_ON_NON_SIGNABLE_DOCUMENT</code> (un documento no firmable trae
+      <code>coordinate</code> en sus signers).</p>
+
+      <div class="callout">
+        <strong>Cuándo es seguro reintentar.</strong>
+        Ante un <code>502</code> lo habitual es que la operación <em>no</em> llegara a aplicarse —la
+        plataforma de firma la rechazó, o no se pudo conectar con ella— y eCMR la revierte, así que
+        repetir la llamada suele ser seguro. Hay una excepción: si la respuesta llegó y no se pudo
+        leer, el efecto es <strong>desconocido</strong>; trátalo entonces igual que un
+        <code>504</code> y sigue la tabla de abajo.
+        Ante un <code>504</code>, depende de la operación, y la diferencia importa. Un 504 significa que
+        la petición sí salió hacia la plataforma de firma y fue la respuesta la que nunca llegó: el
+        efecto <strong>puede haberse producido igualmente</strong> aunque eCMR no lo haya registrado.
+        Lo mismo vale si es <em>tu</em> cliente el que corta por timeout y nunca llega a ver la
+        respuesta: no des por hecho que no pasó nada.
+      </div>
+
+      <table>
+        <tr><th>Operación</th><th>¿Reintentar tras un 504?</th><th>Por qué</th></tr>
+        <tr><td><code>POST /shipments</code></td><td><strong>Sí</strong></td><td>El porte no queda registrado, así que no hay nada que consultar ni que conciliar: repite la llamada.</td></tr>
+        <tr><td><code>POST /shipments/{id}/attachments</code></td><td>Comprueba primero</td><td>No se puede garantizar que el adjunto se haya añadido, y repetir a ciegas lo duplicaría. Consulta antes <code>GET /shipments/{id}/documents/download</code>.</td></tr>
+        <tr><td><code>POST /parties/{id}/reassign</code></td><td>Comprueba primero</td><td>Consulta antes las parties del porte: si la party ya figura delegada, no repitas (el reintento responde <code>409</code>). Repetir a ciegas puede provocar una segunda delegación.</td></tr>
+        <tr><td><code>POST /shipments/{id}/cancel</code></td><td>Comprueba primero</td><td>Consulta el estado del porte: si ya figura cancelado, no hace falta repetir. Repetir no duplica nada: una cancelación ya aplicada responde de nuevo con éxito o con <code>409</code>.</td></tr>
+        <tr><td><code>GET /shipments/{id}/documents/download</code></td><td><strong>Sí</strong></td><td>La descarga no modifica nada, así que repetirla no tiene efectos secundarios.</td></tr>
+      </table>
+
+      <div class="callout">
+        Cuando la comprobación no te aclare qué pasó, escribe a soporte con tu
+        <code>shipment_reference</code> y la hora de la llamada, y lo verificamos.
+      </div>
 
       <h3>Qué pasa cuando falla el procesamiento asíncrono</h3>
       <p>En la creación vía lot, si el envío de un shipment a la plataforma de firma falla, se
@@ -987,10 +1178,13 @@
         <tr><td>Tamaño combinado de documentos (decodificado)</td><td>Máx. 30 MB</td></tr>
         <tr><td>Nombre de documento</td><td>Máx. 168 caracteres, termina en <code>.pdf</code></td></tr>
         <tr><td>Documento principal</td><td>Exactamente 1, de tipo <code>transport_control_document</code> / <code>ecmr</code> / <code>consignment_note</code></td></tr>
+        <tr><td>Documento principal firmable</td><td>Obligatorio <code>signable: true</code>; si no, <code>400</code> con <code>NO_SIGNABLE_MAIN_DOCUMENT</code></td></tr>
+        <tr><td><code>signers</code> de un documento no firmable</td><td>Declaran quién lo ve; cada <code>order</code> debe ser un party con <code>signing_role</code> y no admiten <code>coordinate</code></td></tr>
         <tr><td>Contenido de documento</td><td><code>content</code> (Base64) <strong>o</strong> <code>template</code>, nunca ambos</td></tr>
-        <tr><td>Orden de firma</td><td>Enteros ≥ 1 sin duplicados; consignors → drivers → consignees</td></tr>
+        <tr><td>Orden de firma</td><td>Enteros ≥ 1 sin duplicados; consignors → drivers → consignees (el simplificado sin approver está exento). Con driver <code>approver</code>: en <code>simplified</code> el approver va después del consignor firmante (y la regla consignors → drivers deja de estar exenta); en <code>simplified_with_driver_signature</code>, después del driver firmante. En ambos, ningún <code>cc</code> entre el último firmante y el approver</td></tr>
+        <tr><td>Driver <code>approver</code> (flujos simplificados)</td><td>Máximo 1; en <code>simplified</code> excluye a los drivers <code>cc</code>; solo un <code>driver</code> puede ser <code>approver</code></td></tr>
         <tr><td>Móvil</td><td>E.164 (<code>+34600111222</code>), validado como número móvil real</td></tr>
-        <tr><td>Canal según <code>signing_role</code></td><td><code>signer</code> y <code>approver</code>: cualquier canal. <code>cc</code>: solo <code>email</code>, salvo el <code>driver</code> en copia del flujo simplificado, que también admite <code>sms</code></td></tr>
+        <tr><td>Canal según <code>signing_role</code></td><td>Cualquier rol admite cualquier canal (<code>email</code>, <code>sms</code>, <code>whatsapp</code>)</td></tr>
         <tr><td>Reenvíos de notificación</td><td>Máx. 5 por party</td></tr>
         <tr><td>Datos volcados al PDF en plantillas</td><td>Solo los pares clave-valor de <code>template_values</code>; el resto de datos del shipment no se vuelca</td></tr>
         <tr><td>Adjuntos post-creación</td><td>En cualquier estado salvo <code>pending</code>, <code>error</code>, <code>cancelled</code></td></tr>
